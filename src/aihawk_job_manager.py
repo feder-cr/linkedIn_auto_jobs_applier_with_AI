@@ -14,6 +14,7 @@ from app_config import MINIMUM_WAIT_TIME
 from src.job import Job
 from src.aihawk_easy_applier import AIHawkEasyApplier
 from loguru import logger
+from src.extractors.extraction_chains import EXTRACTORS
 
 
 class EnvironmentKeys:
@@ -215,22 +216,12 @@ class AIHawkJobManager:
             return []
 
     def apply_jobs(self):
-        try:
-            no_jobs_element = self.driver.find_element(By.CLASS_NAME, 'jobs-search-two-pane__no-results-banner--expand')
-            if 'No matching jobs found' in no_jobs_element.text or 'unfortunately, things aren' in self.driver.page_source.lower():
-                logger.debug("No matching jobs found on this page, skipping")
-                return
-        except NoSuchElementException:
-            pass
-
-        job_list_elements = self.driver.find_elements(By.CLASS_NAME, 'scaffold-layout__list-container')[
-            0].find_elements(By.CLASS_NAME, 'jobs-search-results__list-item')
-
-        if not job_list_elements:
-            logger.debug("No job class elements found on page, skipping")
-            return
-
-        job_list = [Job(*self.extract_job_information_from_tile(job_element)) for job_element in job_list_elements]
+        job_list = []
+        for e in EXTRACTORS:
+            extracted_jobs = e.get_job_list(self.driver)
+            if len(extracted_jobs) > 0:
+                job_list = extracted_jobs # break when we find a valid extractor
+                break
 
         for job in job_list:
 

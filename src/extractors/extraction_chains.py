@@ -1,31 +1,33 @@
 from abc import ABC, abstractmethod
-from src import Job
+from src.job import Job
+from selenium.common.exceptions import NoSuchElementException
+from selenium.webdriver.common.by import By
 
 
 # An interface that defines different extraction strategies for the linkedin jobs page.
 class Extractor(ABC):
     @abstractmethod
-    def get_job_list(self, driver) -> List[Job]:
+    def get_job_list(self, driver) -> list[Job]:
         pass
 
 
-# The extractor living in code as of writing this.
+# The only extractor living in code as of writing this.
 class Extractor1(Extractor):
-    def get_job_list(self, driver) -> List[Job]:
+    def get_job_list(self, driver) -> list[Job]:
         try:
-            no_jobs_element = self.driver.find_element(
+            no_jobs_element = driver.find_element(
                 By.CLASS_NAME, "jobs-search-two-pane__no-results-banner--expand"
             )
             if (
                 "No matching jobs found" in no_jobs_element.text
-                or "unfortunately, things aren" in self.driver.page_source.lower()
+                or "unfortunately, things aren" in driver.page_source.lower()
             ):
                 logger.debug("No matching jobs found on this page, skipping")
-                return
+                return []
         except NoSuchElementException:
-            pass
+            return []
 
-        job_list_elements = self.driver.find_elements(
+        job_list_elements = driver.find_elements(
             By.CLASS_NAME, "scaffold-layout__list-container"
         )[0].find_elements(By.CLASS_NAME, "jobs-search-results__list-item")
 
@@ -72,14 +74,4 @@ class Extractor1(Extractor):
         return job_title, company, job_location, link, apply_method
 
 
-# A class that implements the interface
-class Rectangle(Shape):
-    def __init__(self, width, height):
-        self.width = width
-        self.height = height
-
-    def area(self):
-        return self.width * self.height
-
-    def perimeter(self):
-        return 2 * (self.width + self.height)
+EXTRACTORS = [Extractor1()]
