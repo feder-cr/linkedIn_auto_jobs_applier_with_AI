@@ -375,23 +375,42 @@ class AIHawkJobManager:
         job_title, company, job_location, apply_method, link = "", "", "", "", ""
         try:
             print(job_tile.get_attribute('outerHTML'))
-            job_title = job_tile.find_element(By.CLASS_NAME, 'job-card-list__title').find_element(By.TAG_NAME, 'strong').text
             
-            link = job_tile.find_element(By.CLASS_NAME, 'job-card-list__title').get_attribute('href').split('?')[0]
-            company = job_tile.find_element(By.CLASS_NAME, 'job-card-container__primary-description').text
+            # Job title
+            job_title_element = job_tile.find_element(By.CLASS_NAME, 'job-card-job-posting-card-wrapper__title')
+            job_title = job_title_element.find_element(By.TAG_NAME, 'strong').text
+            
+            
+            # link = job_tile.find_element(By.CLASS_NAME, 'job-card-job-posting-card-wrapper__card-link').get_attribute('href')
+            job_wrapper_div = job_tile.find_element(By.CLASS_NAME, 'job-card-job-posting-card-wrapper')
+            job_id = job_wrapper_div.get_attribute('data-job-id')        # Job ID
+            link = f'https://www.linkedin.com/jobs/view/{job_id}'
+
+            
+            # Company
+            company = job_tile.find_element(By.CLASS_NAME, 'artdeco-entity-lockup__subtitle').text.strip()
             logger.debug(f"Job information extracted: {job_title} at {company}")
         except NoSuchElementException:
             logger.warning("Some job information (title, link, or company) is missing.")
+        
         try:
-            job_location = job_tile.find_element(By.CLASS_NAME, 'job-card-container__metadata-item').text
+            # Job location
+            job_location = job_tile.find_element(By.CLASS_NAME, 'artdeco-entity-lockup__caption').text.strip()
         except NoSuchElementException:
             logger.warning("Job location is missing.")
+        
         try:
-            apply_method = job_tile.find_element(By.CLASS_NAME, 'job-card-container__apply-method').text
+            # Apply method
+            footer_items = job_tile.find_elements(By.CLASS_NAME, 'job-card-job-posting-card-wrapper__footer-item')
+            for item in footer_items:
+                text = item.text.strip()
+                if text in ['Easy Apply', 'Apply', 'Applied','Continue']:
+                    apply_method = text
+                    break
         except NoSuchElementException:
             apply_method = "Applied"
             logger.warning("Apply method not found, assuming 'Applied'.")
-
+        
         return job_title, company, job_location, link, apply_method
 
     def is_blacklisted(self, job_title, company, link):
