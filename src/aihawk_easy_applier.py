@@ -282,7 +282,9 @@ class AIHawkEasyApplier:
 
     def _next_or_submit(self):
         logger.debug("Clicking 'Next' or 'Submit' button")
-        next_button = self.driver.find_element(By.CLASS_NAME, "artdeco-button--primary")
+        # Use CSS Selector to match multiple classes
+        next_button = self.driver.find_element(By.CSS_SELECTOR, ".artdeco-button.artdeco-button--2.artdeco-button--primary.ember-view")
+        
         button_text = next_button.text.lower()
         if 'submit application' in button_text:
             logger.debug("Submit button found, submitting application")
@@ -291,6 +293,7 @@ class AIHawkEasyApplier:
             next_button.click()
             time.sleep(random.uniform(1.5, 2.5))
             return True
+        
         time.sleep(random.uniform(1.5, 2.5))
         next_button.click()
         time.sleep(random.uniform(3.0, 5.0))
