@@ -43,8 +43,20 @@ class AIHawkBotFacade:
         self.job_application_profile = job_application_profile
         self.resume = resume
         self.state.job_application_profile_set = True
+
+        # Pass job_application_profile to apply_component (LinkedInJobManager)
+        self.apply_component.set_job_application_profile(job_application_profile)
+
         logger.debug("Job application profile and resume set successfully")
 
+    def set_secrets(self, email, password):
+        logger.debug("Setting secrets: email and password")
+        self._validate_non_empty(email, "Email")
+        self._validate_non_empty(password, "Password")
+        self.email = email
+        self.password = password
+        self.state.credentials_set = True
+        logger.debug("Secrets set successfully")
 
     def set_gpt_answerer_and_resume_generator(self, gpt_answerer_component, resume_generator_manager):
         logger.debug("Setting GPT answerer and resume generator")

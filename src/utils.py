@@ -6,21 +6,30 @@ import time
 
 from selenium import webdriver
 from loguru import logger
-
 from app_config import MINIMUM_LOG_LEVEL
 
 log_file = "app_log.log"
 
-
 if MINIMUM_LOG_LEVEL in ["DEBUG", "TRACE", "INFO", "WARNING", "ERROR", "CRITICAL"]:
+
     logger.remove()
-    logger.add(sys.stderr, level=MINIMUM_LOG_LEVEL)
+
+    logger.add(sys.stderr, level=MINIMUM_LOG_LEVEL, format="{time} - {name} - {level} - {message}")
+
+    logger.add(log_file, level=MINIMUM_LOG_LEVEL, format="{time} - {name} - {level} - {message}", encoding='utf-8')
 else:
+
     logger.warning(f"Invalid log level: {MINIMUM_LOG_LEVEL}. Defaulting to DEBUG.")
     logger.remove()
-    logger.add(sys.stderr, level="DEBUG")
+    logger.add(sys.stderr, level="DEBUG", format="{time} - {name} - {level} - {message}")
+    logger.add(log_file, level="DEBUG", format="{time} - {name} - {level} - {message}", encoding='utf-8')
+
+logger.disable("urllib3.connectionpool")
+logger.disable("selenium.webdriver.remote.remote_connection")
+
 
 chromeProfilePath = os.path.join(os.getcwd(), "chrome_profile", "linkedin_profile")
+
 
 def ensure_chrome_profile():
     logger.debug(f"Ensuring Chrome profile exists at path: {chromeProfilePath}")
@@ -59,10 +68,12 @@ def scroll_slow(driver, scrollable_element, start=0, end=3600, step=300, reverse
     logger.debug(f"Current scroll position: {current_scroll_position}")
 
     if reverse:
+
         if current_scroll_position < start:
             start = current_scroll_position
         logger.debug(f"Adjusted start position for upward scroll: {start}")
     else:
+
         if end > max_scroll_height:
             logger.warning(f"End value exceeds the scroll height. Adjusting end to {max_scroll_height}")
             end = max_scroll_height
@@ -166,6 +177,7 @@ def printyellow(text):
     reset = "\033[0m"
     logger.debug("Printing text in yellow: %s", text)
     print(f"{yellow}{text}{reset}")
+
 
 def stringWidth(text, font, font_size):
     bbox = font.getbbox(text)

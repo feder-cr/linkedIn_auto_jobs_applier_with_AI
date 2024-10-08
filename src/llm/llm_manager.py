@@ -124,7 +124,7 @@ class AIAdapter:
         elif llm_model_type == "gemini":
             return GeminiModel(api_key, llm_model)
         elif llm_model_type == "huggingface":
-            return HuggingFaceModel(api_key, llm_model)        
+            return HuggingFaceModel(api_key, llm_model)
         else:
             raise ValueError(f"Unsupported model type: {llm_model_type}")
 
@@ -321,7 +321,7 @@ class LoggerChatModel:
                         "total_tokens": usage_metadata.get("total_tokens", 0),
                     },
                 }
-            else :  
+            else :
                 content = llmresult.content
                 response_metadata = llmresult.response_metadata
                 id_ = llmresult.id
@@ -339,7 +339,7 @@ class LoggerChatModel:
                         "output_tokens": token_usage.completion_tokens,
                         "total_tokens": token_usage.total_tokens,
                     },
-                }                  
+                }
             logger.debug(f"Parsed LLM result successfully: {parsed_result}")
             return parsed_result
 
@@ -597,6 +597,28 @@ class GPTAnswerer:
         best_option = self.find_best_match(output_str, options)
         logger.debug(f"Best option determined: {best_option}")
         return best_option
+
+    def answer_question_date(self, question: str) -> datetime:
+        logger.debug("Answering date question: %s", question)
+
+        date_prompt_template = """
+        You are assisting a bot designed to automatically apply for jobs on LinkedIn. The bot needs to provide a date based on the following question: '{question}'.
+
+        Provide a valid date in the format 'YYYY-MM-DD'. Do not include any other text or comments.
+        """
+        prompt = ChatPromptTemplate.from_template(date_prompt_template)
+        chain = prompt | self.llm_cheap | StrOutputParser()
+
+        output_str = chain.invoke({"question": question})
+        logger.debug(f"Model's date response: {output_str}")
+
+        try:
+            answer_date = datetime.strptime(output_str.strip(), "%Y-%m-%d")
+            logger.debug(f"Parsed date: {answer_date}")
+            return answer_date
+        except ValueError as e:
+            logger.error(f"Failed to parse date from model's response: {e}")
+            raise ValueError("Model returned an invalid date format.")
 
     def resume_or_cover(self, phrase: str) -> str:
         logger.debug(

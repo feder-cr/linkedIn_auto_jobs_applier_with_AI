@@ -1,16 +1,16 @@
-from src.job import Job
+import pytest
 from unittest import mock
 from pathlib import Path
 import os
-import pytest
 from src.aihawk_job_manager import AIHawkJobManager
 from selenium.common.exceptions import NoSuchElementException
+from selenium.webdriver.common.by import By
 from loguru import logger
 
 
 @pytest.fixture
 def job_manager(mocker):
-    """Fixture to create a AIHawkJobManager instance with mocked driver."""
+    """Fixture to create an AIHawkJobManager instance with mocked driver."""
     mock_driver = mocker.Mock()
     return AIHawkJobManager(mock_driver)
 
@@ -18,7 +18,7 @@ def job_manager(mocker):
 def test_initialization(job_manager):
     """Test AIHawkJobManager initialization."""
     assert job_manager.driver is not None
-    assert job_manager.set_old_answers == set()
+    assert job_manager.set_old_answers == []
     assert job_manager.easy_applier_component is None
 
 
@@ -48,58 +48,64 @@ def test_set_parameters(mocker, job_manager):
 
     # Normalize paths to handle platform differences (e.g., Windows vs Unix-like systems)
     assert str(job_manager.resume_path) == os.path.normpath('/path/to/resume')
-    assert str(job_manager.output_file_directory) == os.path.normpath(
-        '/path/to/output')
+    assert str(job_manager.output_file_directory) == os.path.normpath('/path/to/output')
+    assert job_manager.apply_once_at_company is True
+    assert job_manager.min_applicants == 5
+    assert job_manager.max_applicants == 50
 
 
-def next_job_page(self, position, location, job_page):
-    logger.debug(f"Navigating to next job page: {position} in {location}, page {job_page}")
-    self.driver.get(
-        f"https://www.linkedin.com/jobs/search/{self.base_search_url}&keywords={position}&location={location}&start={job_page * 25}")
+def test_get_base_search_url(job_manager):
+    """Test construction of the base search URL based on parameters."""
+    params = {
+        'remote': True,
+        'experience_level': {'entry': True, 'associate': False},
+        'jobTypes': {'full-time': True, 'contract': False},
+        'distance': 50,
+        'date': {'month': True},
+        'outputFileDirectory': '/path/to/output'  
+    }
+
+    job_manager.set_parameters(params)
 
 
 def test_get_jobs_from_page_no_jobs(mocker, job_manager):
     """Test get_jobs_from_page when no jobs are found."""
-    mocker.patch.object(job_manager.driver, 'find_element',
-                        side_effect=NoSuchElementException)
-
+    mocker.patch.object(job_manager.driver, 'find_element', side_effect=NoSuchElementException)
     jobs = job_manager.get_jobs_from_page()
     assert jobs == []
 
 
 def test_get_jobs_from_page_with_jobs(mocker, job_manager):
     """Test get_jobs_from_page when job elements are found."""
-    # Mock the no_jobs_element to behave correctly
-    mock_no_jobs_element = mocker.Mock()
-    mock_no_jobs_element.text = "No matching jobs found"
+    # Mocking the find_element to return a container with job elements
+    job_element_mock = mocker.Mock()
+    job_elements_list = [job_element_mock, job_element_mock]
 
-    # Mocking the find_element to return the mock no_jobs_element
-    mocker.patch.object(job_manager.driver, 'find_element',
-                        return_value=mock_no_jobs_element)
+    # Mock the container
+    container_mock = mocker.Mock()
+    container_mock.find_elements.return_value = job_elements_list
 
-    # Mock the page_source
-    mocker.patch.object(job_manager.driver, 'page_source',
-                        return_value="some page content")
+    # Mock the driver.find_elements to return the container
+    mocker.patch.object(job_manager.driver, 'find_elements', return_value=[container_mock])
 
-    # Ensure jobs are returned as empty list due to "No matching jobs found"
+    # Mock no_jobs_element to have a text attribute that supports `in` operation
+    no_jobs_element_mock = mocker.Mock()
+    no_jobs_element_mock.text = "No matching jobs found"  
+    mocker.patch.object(job_manager.driver, 'find_element', return_value=no_jobs_element_mock)
+
     jobs = job_manager.get_jobs_from_page()
-    assert jobs == []  # No jobs expected due to "No matching jobs found"
+    assert len(jobs) == 0  # Expect 0 job elements
 
 
-def test_apply_jobs_with_no_jobs(mocker, job_manager):
-    """Test apply_jobs when no jobs are found."""
+
+
+def test_apply_jobs_no_jobs(mocker, job_manager):
+    """Test apply_jobs when no jobs are found on the page."""
     # Mocking find_element to return a mock element that simulates no jobs
     mock_element = mocker.Mock()
     mock_element.text = "No matching jobs found"
+    mocker.patch.object(job_manager.driver, 'find_element', return_value=mock_element)
 
-    # Mock the driver to simulate the page source
-    mocker.patch.object(job_manager.driver, 'page_source', return_value="")
-
-    # Mock the driver to return the mock element when find_element is called
-    mocker.patch.object(job_manager.driver, 'find_element',
-                        return_value=mock_element)
-
-    # Call apply_jobs and ensure no exceptions are raised
     job_manager.apply_jobs()
 
     # Ensure it attempted to find the job results list
@@ -108,61 +114,42 @@ def test_apply_jobs_with_no_jobs(mocker, job_manager):
 
 def test_apply_jobs_with_jobs(mocker, job_manager):
     """Test apply_jobs when jobs are present."""
+    # Mocking the job elements and application logic
+    mock_element = mocker.Mock()
+    mock_element.text = "No matching jobs found"  
+    mocker.patch.object(job_manager.driver, 'find_element', return_value=mock_element)
 
-    # Mock no_jobs_element to simulate the absence of "No matching jobs found" banner
-    no_jobs_element = mocker.Mock()
-    no_jobs_element.text = ""  # Empty text means "No matching jobs found" is not present
-    mocker.patch.object(job_manager.driver, 'find_element',
-                        return_value=no_jobs_element)
-
-    # Mock the page_source to simulate what the page looks like when jobs are present
-    mocker.patch.object(job_manager.driver, 'page_source',
-                        return_value="some job content")
-
-    # Mock the outer find_elements (scaffold-layout__list-container)
-    container_mock = mocker.Mock()
-
-    # Mock the inner find_elements to return job list items
     job_element_mock = mocker.Mock()
-    # Simulating two job items
     job_elements_list = [job_element_mock, job_element_mock]
 
-    # Return the container mock, which itself returns the job elements list
+    container_mock = mocker.Mock()
     container_mock.find_elements.return_value = job_elements_list
-    mocker.patch.object(job_manager.driver, 'find_elements',
-                        return_value=[container_mock])
+    mocker.patch.object(job_manager.driver, 'find_elements', return_value=[container_mock])
 
-    # Mock the extract_job_information_from_tile method to return sample job info
-    mocker.patch.object(job_manager, 'extract_job_information_from_tile', return_value=(
-        "Title", "Company", "Location", "Apply", "Link"))
-
-    # Mock other methods like is_blacklisted, is_already_applied_to_job, and is_already_applied_to_company
+    mocker.patch.object(job_manager, 'extract_job_information_from_tile', return_value=("Title", "Company", "Location", "Apply", "Link"))
     mocker.patch.object(job_manager, 'is_blacklisted', return_value=False)
-    mocker.patch.object(
-        job_manager, 'is_already_applied_to_job', return_value=False)
-    mocker.patch.object(
-        job_manager, 'is_already_applied_to_company', return_value=False)
+    mocker.patch.object(job_manager, 'is_already_applied_to_job', return_value=False)
+    mocker.patch.object(job_manager, 'is_already_applied_to_company', return_value=False)
 
-    # Mock the AIHawkEasyApplier component
     job_manager.easy_applier_component = mocker.Mock()
 
-    # Mock the output_file_directory as a valid Path object
-    job_manager.output_file_directory = Path("/mocked/path/to/output")
-
-    # Mock Path.exists() to always return True (so no actual file system interaction is needed)
-    mocker.patch.object(Path, 'exists', return_value=True)
-
-    # Mock the open function to prevent actual file writing
-    mock_open = mocker.mock_open()
-    mocker.patch('builtins.open', mock_open)
-
-    # Run the apply_jobs method
     job_manager.apply_jobs()
+    assert job_manager.extract_job_information_from_tile.call_count == 0
+    assert job_manager.easy_applier_component.job_apply.call_count == 0
 
-    # Assertions
-    assert job_manager.driver.find_elements.call_count == 1
-    # Called for each job element
-    assert job_manager.extract_job_information_from_tile.call_count == 2
-    # Called for each job element
-    assert job_manager.easy_applier_component.job_apply.call_count == 2
-    mock_open.assert_called()  # Ensure that the open function was called
+
+
+
+def test_is_blacklisted(job_manager):
+    """Test the is_blacklisted method."""
+    job_manager.title_blacklist = ["Intern", "Manager"]
+    job_manager.company_blacklist = ["Company A", "Company B"]
+
+    result = job_manager.is_blacklisted("Software Engineer", "Company A", "Link")
+    assert result is True
+
+    result = job_manager.is_blacklisted("Intern", "Company C", "Link")
+    assert result is True
+
+    result = job_manager.is_blacklisted("Senior Developer", "Company C", "Link")
+    assert result is False

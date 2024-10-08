@@ -1,5 +1,5 @@
+lib_resume_builder_AIHawk @ git+https://github.com/feder-cr/lib_resume_builder_AIHawk.git@d4224a9fde34c95cce391651b920f6c94eade5d3
 click
-git+https://github.com/feder-cr/lib_resume_builder_AIHawk.git
 httpx~=0.27.2
 inputimeout==1.0.4
 jsonschema==4.23.0

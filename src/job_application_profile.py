@@ -6,6 +6,21 @@ from loguru import logger
 
 
 @dataclass
+class PersonalInformation:
+    name: str
+    surname: str
+    date_of_birth: str
+    country: str
+    city: str
+    address: str
+    phone_prefix: str
+    phone: str
+    email: str
+    github: str
+    linkedin: str
+
+
+@dataclass
 class SelfIdentification:
     gender: str
     pronouns: str
@@ -57,6 +72,7 @@ class SalaryExpectations:
 
 @dataclass
 class JobApplicationProfile:
+    personal_information: PersonalInformation
     self_identification: SelfIdentification
     legal_authorization: LegalAuthorization
     work_preferences: WorkPreferences
@@ -78,6 +94,19 @@ class JobApplicationProfile:
         if not isinstance(data, dict):
             logger.error(f"YAML data must be a dictionary, received: {type(data)}")
             raise TypeError("YAML data must be a dictionary.")
+
+        # Process personal_information
+        try:
+            logger.debug("Processing personal_information")
+            self.personal_information = PersonalInformation(**data['personal_information'])
+            logger.debug("personal_information processed: %s", self.personal_information)
+        except KeyError as e:
+            logger.error("Required field %s is missing in personal_information data.", e)
+            raise KeyError(f"Required field {e} is missing in personal_information data.") from e
+        except TypeError as e:
+            logger.error("Error in personal_information data: %s", e)
+            raise TypeError(f"Error in personal_information data: {e}") from e
+
 
         # Process self_identification
         try:

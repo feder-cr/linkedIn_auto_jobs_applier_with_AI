@@ -250,6 +250,18 @@ Please write the cover letter in a way that directly addresses the job role and 
 - Do not include any introductions, explanations, or additional information.
 - The letter should be formatted into paragraph.
 
+## Formatting rules:
+- The letter should be formatted into paragraphs for readability.
+- Highlight key skills, achievements, and percentages using bold text where appropriate.
+- If there are specific examples or metrics (like "85%"), ensure they are clearly presented.
+- The letter should contain no more than 3-4 paragraphs for brevity.
+- Do not include any greetings or signatures.
+
+Please use the following formatting rules:
+- Use <b> and </b> to bold key qualifications, skills, and experiences.
+- Do not include any introductions, explanations, or additional information.
+- The letter should be formatted into paragraphs and should not include a greeting or signature.
+
 ## Job Description:
 ```
 {job_description}
