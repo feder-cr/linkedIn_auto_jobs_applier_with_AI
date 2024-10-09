@@ -6,6 +6,7 @@ import pytest
 from src.aihawk_job_manager import AIHawkJobManager
 from selenium.common.exceptions import NoSuchElementException
 from loguru import logger
+from src.extractors.extraction_chains import EXTRACTORS
 
 
 @pytest.fixture
@@ -133,8 +134,9 @@ def test_apply_jobs_with_jobs(mocker, job_manager):
                         return_value=[container_mock])
 
     # Mock the extract_job_information_from_tile method to return sample job info
-    mocker.patch.object(job_manager, 'extract_job_information_from_tile', return_value=(
-        "Title", "Company", "Location", "Apply", "Link"))
+    for e in EXTRACTORS:
+        mocker.patch.object(e, 'extract_job_information_from_tile', return_value=(
+            "Title", "Company", "Location", "Apply", "Link"))
 
     # Mock other methods like is_blacklisted, is_already_applied_to_job, and is_already_applied_to_company
     mocker.patch.object(job_manager, 'is_blacklisted', return_value=False)
@@ -161,8 +163,8 @@ def test_apply_jobs_with_jobs(mocker, job_manager):
 
     # Assertions
     assert job_manager.driver.find_elements.call_count == 1
-    # Called for each job element
-    assert job_manager.extract_job_information_from_tile.call_count == 2
+    # Called for each job element but only for the first extractor.
+    assert EXTRACTORS[0].extract_job_information_from_tile.call_count == 2
     # Called for each job element
     assert job_manager.easy_applier_component.job_apply.call_count == 2
     mock_open.assert_called()  # Ensure that the open function was called
