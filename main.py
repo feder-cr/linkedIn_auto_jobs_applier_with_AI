@@ -8,7 +8,7 @@ from selenium import webdriver
 from selenium.webdriver.chrome.service import Service as ChromeService
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.common.exceptions import WebDriverException
-from lib_resume_builder_AIHawk import Resume,StyleManager,FacadeManager,ResumeGenerator
+from lib_resume_builder_AIHawk import Resume, FacadeManager, ResumeGenerator
 from src.utils import chrome_browser_options
 from src.llm.llm_manager import GPTAnswerer
 from src.aihawk_authenticator import AIHawkAuthenticator
@@ -17,8 +17,8 @@ from src.aihawk_job_manager import AIHawkJobManager
 from src.job_application_profile import JobApplicationProfile
 from loguru import logger
 
-# Suppress stderr
-sys.stderr = open(os.devnull, 'w')
+# Suppress stderr only during specific operations
+original_stderr = sys.stderr
 
 class ConfigError(Exception):
     pass
@@ -37,8 +37,8 @@ class ConfigValidator:
             raise ConfigError(f"Error reading file {yaml_path}: {exc}")
         except FileNotFoundError:
             raise ConfigError(f"File not found: {yaml_path}")
-    
-    
+
+    @staticmethod
     def validate_config(config_yaml_path: Path) -> dict:
         parameters = ConfigValidator.validate_yaml_file(config_yaml_path)
         required_keys = {
@@ -67,30 +67,36 @@ class ConfigValidator:
                 else:
                     raise ConfigError(f"Invalid type for key '{key}' in config file {config_yaml_path}. Expected {expected_type}.")
 
+        # Validate experience levels, ensure they are boolean
         experience_levels = ['internship', 'entry', 'associate', 'mid-senior level', 'director', 'executive']
         for level in experience_levels:
             if not isinstance(parameters['experienceLevel'].get(level), bool):
                 raise ConfigError(f"Experience level '{level}' must be a boolean in config file {config_yaml_path}")
 
+        # Validate job types, ensure they are boolean
         job_types = ['full-time', 'contract', 'part-time', 'temporary', 'internship', 'other', 'volunteer']
         for job_type in job_types:
             if not isinstance(parameters['jobTypes'].get(job_type), bool):
                 raise ConfigError(f"Job type '{job_type}' must be a boolean in config file {config_yaml_path}")
 
+        # Validate date filters
         date_filters = ['all time', 'month', 'week', '24 hours']
         for date_filter in date_filters:
             if not isinstance(parameters['date'].get(date_filter), bool):
                 raise ConfigError(f"Date filter '{date_filter}' must be a boolean in config file {config_yaml_path}")
 
+        # Validate positions and locations as lists of strings
         if not all(isinstance(pos, str) for pos in parameters['positions']):
             raise ConfigError(f"'positions' must be a list of strings in config file {config_yaml_path}")
         if not all(isinstance(loc, str) for loc in parameters['locations']):
             raise ConfigError(f"'locations' must be a list of strings in config file {config_yaml_path}")
 
+        # Validate distance
         approved_distances = {0, 5, 10, 25, 50, 100}
         if parameters['distance'] not in approved_distances:
             raise ConfigError(f"Invalid distance value in config file {config_yaml_path}. Must be one of: {approved_distances}")
 
+        # Ensure blacklists are lists
         for blacklist in ['companyBlacklist', 'titleBlacklist']:
             if not isinstance(parameters.get(blacklist), list):
                 raise ConfigError(f"'{blacklist}' must be a list in config file {config_yaml_path}")
@@ -99,10 +105,8 @@ class ConfigValidator:
 
         return parameters
 
-
-
     @staticmethod
-    def validate_secrets(secrets_yaml_path: Path) -> tuple:
+    def validate_secrets(secrets_yaml_path: Path) -> str:
         secrets = ConfigValidator.validate_yaml_file(secrets_yaml_path)
         mandatory_secrets = ['llm_api_key']
 
@@ -115,10 +119,6 @@ class ConfigValidator:
         return secrets['llm_api_key']
 
 class FileManager:
-    @staticmethod
-    def find_file(name_containing: str, with_extension: str, at_path: Path) -> Path:
-        return next((file for file in at_path.iterdir() if name_containing.lower() in file.name.lower() and file.suffix.lower() == with_extension.lower()), None)
-
     @staticmethod
     def validate_data_folder(app_data_folder: Path) -> tuple:
         if not app_data_folder.exists() or not app_data_folder.is_dir():
@@ -150,7 +150,6 @@ class FileManager:
 
 def init_browser() -> webdriver.Chrome:
     try:
-        
         options = chrome_browser_options()
         service = ChromeService(ChromeDriverManager().install())
         return webdriver.Chrome(service=service, options=options)
@@ -159,15 +158,15 @@ def init_browser() -> webdriver.Chrome:
 
 def create_and_run_bot(parameters, llm_api_key):
     try:
-        style_manager = StyleManager()
+        style_manager = FacadeManager.StyleManager()
         resume_generator = ResumeGenerator()
         with open(parameters['uploads']['plainTextResume'], "r", encoding='utf-8') as file:
             plain_text_resume = file.read()
         resume_object = Resume(plain_text_resume)
         resume_generator_manager = FacadeManager(llm_api_key, style_manager, resume_generator, resume_object, Path("data_folder/output"))
-        os.system('cls' if os.name == 'nt' else 'clear')
+        
+        # Run the resume generator manager's functions
         resume_generator_manager.choose_style()
-        os.system('cls' if os.name == 'nt' else 'clear')
         
         job_application_profile_object = JobApplicationProfile(plain_text_resume)
         
@@ -203,19 +202,14 @@ def main(resume: Path = None):
         create_and_run_bot(parameters, llm_api_key)
     except ConfigError as ce:
         logger.error(f"Configuration error: {str(ce)}")
-        logger.error(f"Refer to the configuration guide for troubleshooting: https://github.com/feder-cr/AIHawk_AIHawk_automatic_job_application/blob/main/readme.md#configuration {str(ce)}")
+        logger.error(f"Refer to the configuration guide for troubleshooting.")
     except FileNotFoundError as fnf:
         logger.error(f"File not found: {str(fnf)}")
         logger.error("Ensure all required files are present in the data folder.")
-        logger.error("Refer to the file setup guide: https://github.com/feder-cr/AIHawk_AIHawk_automatic_job_application/blob/main/readme.md#configuration")
     except RuntimeError as re:
-
         logger.error(f"Runtime error: {str(re)}")
-
-        logger.error("Refer to the configuration and troubleshooting guide: https://github.com/feder-cr/AIHawk_AIHawk_automatic_job_application/blob/main/readme.md#configuration")
     except Exception as e:
         logger.error(f"An unexpected error occurred: {str(e)}")
-        logger.error("Refer to the general troubleshooting guide: https://github.com/feder-cr/AIHawk_AIHawk_automatic_job_application/blob/main/readme.md#configuration")
 
 if __name__ == "__main__":
     main()
