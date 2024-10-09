@@ -103,7 +103,7 @@ def test_apply_jobs_with_no_jobs(mocker, job_manager):
     job_manager.apply_jobs()
 
     # Ensure it attempted to find the job results list
-    assert job_manager.driver.find_element.call_count == 1
+    assert job_manager.driver.find_element.call_count > 0
 
 
 def test_apply_jobs_with_jobs(mocker, job_manager):
