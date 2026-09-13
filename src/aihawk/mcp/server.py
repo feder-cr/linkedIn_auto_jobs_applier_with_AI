@@ -50,7 +50,7 @@ from typing import Literal
 from mcp.server.fastmcp import FastMCP, Image
 from mcp.types import ToolAnnotations
 
-from . import NOTHING_RUNNING, actions, identity, plan, store
+from . import NOTHING_RUNNING, __version__, actions, identity, plan, store
 from .registry import BrowserRegistry
 
 # Kept for callers that imported it from here. The implementation moved.
@@ -202,18 +202,47 @@ server does. There is no third browser and no way to get one from here -
 
 mcp = FastMCP("stealth", instructions=INSTRUCTIONS, lifespan=_lifespan)
 
+# ⛔ WHO THE CLIENT IS TALKING TO, AND WHY THIS REACHES PAST FastMCP.
+# `initialize` carries a serverInfo with a name and a version, and a client
+# uses them to say what it connected to and to correlate a defect with a
+# release. FastMCP takes no `version=`: it builds the low-level Server without
+# one, and that Server falls back to `importlib.metadata.version("mcp")`.
+# Measured before this line existed: the handshake advertised `1.28.0`, the
+# version of the SDK, for every build of this package. A client asking what it
+# was driving got the number of a library we merely depend on.
+# The field belongs to the low-level Server and is public there; only the
+# FastMCP wrapper omits it, so setting it here is filling a gap, not reaching
+# into something private. The name stays `stealth` on purpose: it is what the
+# READMEs tell a person to register (`claude mcp add ... stealth -- uvx
+# aihawk`) and it prefixes every tool a client sees (`mcp__stealth__*`), so
+# moving it would rename tools under people who already have them wired.
+mcp._mcp_server.version = __version__
+
 
 def _says(title: str, *, read_only: bool = False, destructive: bool = False,
           open_world: bool = True) -> ToolAnnotations:
     """What a client may assume about a tool before it calls it.
 
-    Every tool declares a title and one of the two hints a directory review
-    asks for: `read_only` (readOnlyHint) for a tool that changes nothing, so
-    a client may run it without asking each time, and `destructive`
-    (destructiveHint) for one that acts on the page or on a browser, which a
-    client confirms. Anything that types, clicks, navigates or closes is
-    `destructive` here: a form submitted or a page left behind cannot be
-    undone from this side. `open_world` says the tool reaches the live web.
+    Every tool declares a title and states BOTH hints, never leaving one out:
+    `read_only` (readOnlyHint) for a tool that changes nothing, so a client
+    may run it without asking each time, and `destructive` (destructiveHint)
+    for one that acts on the page or on a browser, which a client confirms.
+    Anything that types, clicks, navigates or closes is `destructive` here: a
+    form submitted or a page left behind cannot be undone from this side.
+    `open_world` says the tool reaches the live web.
+
+    ⛔ AND THERE IS A THIRD GROUP, which five tools belonged to while claiming
+    to be the first. `browser_read_text`, `browser_snapshot`,
+    `browser_read_html`, `browser_take_screenshot` and `browser_evaluate` go
+    through `ready()`, which STARTS a real Firefox when none is running. A
+    tool that can spawn a browser has modified its environment, so
+    `readOnlyHint` was false in fact and true on the wire, and a client
+    trusting it ran them unattended. They now say read-only NO and destructive
+    NO, which is the honest reading: additive - it may bring something into
+    being, it will not wreck anything. Nothing on the page changes either way.
+    Stating both explicitly is what makes that group legible: an ABSENT hint
+    and a hint set to false are different facts, and a client reading MCP's
+    defaults treats a missing `destructiveHint` as true.
 
     The title lives in the annotations rather than on the tool because
     `FastMCP.tool(title=)` exists from mcp 1.10 and this package's floor is
@@ -897,7 +926,7 @@ async def browser_navigate(url: str, wait_until: str = "domcontentloaded",
                            browser_id=browser)
 
 
-@mcp.tool(annotations=_says("Read the page text", read_only=True))
+@mcp.tool(annotations=_says("Read the page text"))
 async def browser_read_text(selector: str = "body", max_chars: int = 6000,
                             browser: Browser | None = None) -> str:
     """The visible text of an element, with the markup gone.
@@ -915,7 +944,7 @@ async def browser_read_text(selector: str = "body", max_chars: int = 6000,
         selector, max_chars)
 
 
-@mcp.tool(annotations=_says("Snapshot the page", read_only=True))
+@mcp.tool(annotations=_says("Snapshot the page"))
 async def browser_snapshot(max_chars: int = 0, browser: Browser | None = None) -> str:
     """Title, url, and the interactive elements that are actually visible.
 
@@ -939,7 +968,7 @@ async def browser_snapshot(max_chars: int = 0, browser: Browser | None = None) -
         await ready(browser), max_chars)
 
 
-@mcp.tool(annotations=_says("Read the page HTML", read_only=True))
+@mcp.tool(annotations=_says("Read the page HTML"))
 async def browser_read_html(mode: str = "form", browser: Browser | None = None) -> str:
     """The page's HTML, cleaned down to what is worth reading.
 
@@ -962,7 +991,7 @@ async def browser_read_html(mode: str = "form", browser: Browser | None = None) 
         await ready(browser), mode)
 
 
-@mcp.tool(annotations=_says("Take a screenshot", read_only=True))
+@mcp.tool(annotations=_says("Take a screenshot"))
 async def browser_take_screenshot(browser: Browser | None = None) -> Image:
     """One screenshot of this browser's page, on demand.
 
@@ -1079,7 +1108,7 @@ async def browser_press_key(key: str, browser: Browser | None = None) -> str:
         await ready(browser), key)
 
 
-@mcp.tool(annotations=_says("Read the page with JavaScript", read_only=True))
+@mcp.tool(annotations=_says("Read the page with JavaScript"))
 async def browser_evaluate(expression: str, browser: Browser | None = None) -> str:
     """READ from the page with JavaScript and get the result as JSON.
 
@@ -1110,7 +1139,13 @@ def main() -> None:
         # streamable-http ships with the `mcp` package, which already requires
         # starlette and uvicorn, so serving over HTTP costs no new dependency.
         mcp.settings.host = os.environ.get("STEALTHFOX_MCP_HOST", "127.0.0.1")
-        mcp.settings.port = int(os.environ.get("STEALTHFOX_MCP_PORT", "8765"))
+        # ⛔ NOT 8765, WHICH IS THE INTERFACE'S PORT. `aihawk ui` defaults to
+        # 8765 (cli.py), and this default used to be the same number in a
+        # module that does not know about that one. Nobody had hit it because
+        # nothing sets STEALTHFOX_MCP_TRANSPORT=http on its own, so the two
+        # defaults had never been asked for at the same time; the first person
+        # to try would have got a bind error with no hint of why.
+        mcp.settings.port = int(os.environ.get("STEALTHFOX_MCP_PORT", "8766"))
         mcp.run(transport="streamable-http")
     else:
         _close_on_lifespan_exit = True
