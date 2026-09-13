@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "aihawk"
-version = "0.48.0"
-description = "Drive a stealth browser with an LLM from one command"
+version = "0.49.0"
+description = "Anti detect browser and web browsing agent: undetected, no captchas, no blocks"
 readme = "README.md"
 requires-python = ">=3.11"
 # The README says MIT and nothing here did, so the PyPI page showed no licence
