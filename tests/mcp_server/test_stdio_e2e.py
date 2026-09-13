@@ -49,6 +49,32 @@ async def test_the_handshake_says_which_aihawk_this_is():
 
 
 @pytest.mark.asyncio
+async def test_a_refused_open_reaches_the_client_as_an_error():
+    """⛔ A REFUSAL RETURNED AS A SUCCESSFUL RESULT IS A LIE THE PROTOCOL TELLS.
+
+    `browser_open` had three failure paths that ended in `return`: a browser
+    name that is not one of the two, a plan it would not make, and an engine
+    that would not start. All three reached a client with `isError` false, so
+    a careful one recorded a browser that had opened and a careless one went
+    on to drive it. The sentences were always right; the flag was not.
+
+    Driven over a real pipe rather than in-process, because `isError` is a
+    property of the RESULT a client receives, and calling the function
+    directly never builds one. This path needs no engine: the plan is refused
+    before anything is launched.
+    """
+    async with stdio_client(server_params()) as (read, write):
+        async with ClientSession(read, write) as mcp:
+            await mcp.initialize()
+            got = await mcp.call_tool("browser_open", {"profile": "none"})
+    assert got.isError, (
+        "the server refused to open a browser and told the client it had "
+        "succeeded: %r" % got.content)
+    said = " ".join(getattr(c, "text", "") for c in got.content)
+    assert "refused" in said, said
+
+
+@pytest.mark.asyncio
 async def test_every_tool_reaches_the_wire_with_its_hints():
     """⛔ WHAT IS REGISTERED IS NOT NECESSARILY WHAT GOES OUT.
 
