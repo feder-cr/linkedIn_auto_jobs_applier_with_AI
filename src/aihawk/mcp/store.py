@@ -21,11 +21,9 @@ not.
 from __future__ import annotations
 
 import json
-import os
-import sys
 import time
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
 from ..storage import (DEFAULT_SESSION_ID, home, safe_name as _safe,
                        write_atomically)
