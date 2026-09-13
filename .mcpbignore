@@ -5,7 +5,6 @@
 .git/
 .github/
 .claude-plugin/
-.cursor-plugin/
 .pytest_cache/
 .venv/
 __pycache__/
@@ -17,6 +16,7 @@ dist/
 .env.*
 .gitignore
 tests/
+skills/
 docs/
 articles/
 scripts/

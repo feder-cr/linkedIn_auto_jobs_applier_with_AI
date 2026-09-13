@@ -44,7 +44,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 ALLOWED = ("manifest.json", "pyproject.toml", "README.md", "LICENSE",
            "assets/aihawk-icon-400.png", "src/aihawk/")
 #: Names that must not appear anywhere in an archive path, whatever the prefix.
-FORBIDDEN_PARTS = (".env", ".git", "__pycache__", "tests", "docs", "articles")
+FORBIDDEN_PARTS = (".env", ".git", "__pycache__", "tests", "docs", "articles", "skills")
 
 
 def archive_findings(names):

@@ -367,8 +367,11 @@ def check_surface(rel, text, count, chars):
 
 
 def content_files(root):
+    # `skills` since 2026-09-13: a plugin skill is a page a model reads, and
+    # the setup skill carries the README's install block, so the fifth check
+    # holds it to the README's lines like any wiki page.
     files = []
-    for base in ("docs", "articles"):
+    for base in ("docs", "articles", "skills"):
         files.extend(sorted((root / base).rglob("*.md")))
     if (root / "README.md").exists():
         files.append(root / "README.md")

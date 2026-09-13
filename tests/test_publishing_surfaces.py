@@ -68,8 +68,21 @@ def _load():
     }
 
 
+#: No `.cursor-plugin/plugin.json` since 2026-09-13 night: Cursor's own docs say
+#: "A plugin that follows the Agent Plugins specification loads in Cursor
+#: without changes", and that manifest is their format for rules, agents,
+#: commands and hooks, none of which this plugin has. cursor.directory's scan
+#: read `plugin.json` and `mcp.json` and never the logo that file carried.
 PLUGIN_FILES = (".claude-plugin/plugin.json", "plugin.json", "mcp.json", ".mcp.json",
-                ".cursor-plugin/plugin.json", "gemini-extension.json")
+                "gemini-extension.json")
+#: The setup skill Anthropic's submission guide recommends for a plugin whose
+#: MCP server needs a one-time step ("Plugins can include a SETUP.md skill to
+#: guide Claude through configuring and connecting any MCP servers bundled in
+#: the plugin"). Ours is the engine download, and a plugin installed from the
+#: directory never shows the README where that block lives. The block itself
+#: is held identical to the README's by scripts/check_content.py, which scans
+#: skills/ like a wiki page.
+SETUP_SKILL = "skills/setup/SKILL.md"
 #: ⛔ TWO NAMES FOR ONE CONFIGURATION, AND NEITHER IS OPTIONAL. Measured
 #: 2026-09-13 by installing the plugin in this machine's Claude Code from a
 #: local marketplace: with `mcp.json` and `"mcpServers": "./mcp.json"` in the
@@ -123,9 +136,6 @@ def plugin_findings(package_name, manifest, plugins):
             out.append("%s does not declare the Agent Plugins 1.0.0 schema" % rel)
         if ((mcp.get("mcpServers") or {}).get("aihawk") or {}).get("type") != "stdio":
             out.append("%s does not say the transport is stdio, which the Agent Plugins schema requires" % rel)
-    logo = (plugins.get(".cursor-plugin/plugin.json") or {}).get("logo")
-    if not logo or not (ROOT / logo).is_file():
-        out.append("the Cursor plugin's logo %r is not a file in the repository" % logo)
     # The two manifests that carry a version carry the MANIFEST's version, not
     # the package's: `uvx aihawk` does not change per release. One number in
     # two files, so they are held equal here; bump both when the config changes.
@@ -135,6 +145,26 @@ def plugin_findings(package_name, manifest, plugins):
     if claude.get("version") != gemini.get("version"):
         out.append("the Claude plugin is at %r and the Gemini extension at %r; one config, one version"
                    % (claude.get("version"), gemini.get("version")))
+    if claude.get("version") == "1.0.0":
+        out.append("plugin version 1.0.0 is the one that shipped with no MCP server; a pinned "
+                   "version only updates when it changes, so it must be past 1.0.0")
+    return out
+
+
+def setup_skill_findings(text):
+    """Why the setup skill would not do its job, or nothing: a `name` and a
+    `description` in the frontmatter (the Agent Skills format both Claude Code
+    and Agent Plugins read), and the one command the whole skill exists for."""
+    out = []
+    if not text.startswith("---\n"):
+        out.append("SKILL.md has no frontmatter")
+    head = text.split("---")[1] if text.count("---") >= 2 else ""
+    if not re.search(r"^name:\s*setup\s*$", head, re.M):
+        out.append("the skill is not named setup")
+    if not re.search(r"^description:\s*\S", head, re.M):
+        out.append("the skill has no description")
+    if "uvx invisible-playwright fetch" not in text:
+        out.append("the skill does not run the engine download, which is its one job")
     return out
 
 
@@ -174,7 +204,7 @@ BUNDLE_LAUNCH = {"command": "uv", "args": ["run", "--directory", "${__dirname}",
 
 #: Paths the bundle must not carry, each named in .mcpbignore. The archive
 #: check in scripts/pack_bundle.py is the second wall; this is the first.
-MUST_IGNORE = (".git/", ".github/", ".env", "tests/", "docs/", "articles/", "scripts/",
+MUST_IGNORE = (".git/", ".github/", ".env", "tests/", "skills/", "docs/", "articles/", "scripts/",
                "assets/*", "!assets/aihawk-icon-400.png", "plugin.json", "mcp.json",
                ".mcp.json", "gemini-extension.json", "server.json")
 
@@ -245,6 +275,20 @@ def test_the_bundle_is_the_one_the_spec_describes():
 def test_the_plugin_manifests_launch_the_package_that_ships():
     d = _load()
     assert plugin_findings(d["package_name"], d["manifest"], d["plugins"]) == []
+
+
+def test_the_setup_skill_is_there_and_does_its_one_job():
+    text = (ROOT / SETUP_SKILL).read_text(encoding="utf-8")
+    assert setup_skill_findings(text) == []
+
+
+def test_the_setup_skill_check_refuses_known_bad_input():
+    text = (ROOT / SETUP_SKILL).read_text(encoding="utf-8")
+    assert setup_skill_findings(text) == []
+    assert setup_skill_findings(text.replace("name: setup", "name: install"))
+    assert setup_skill_findings(re.sub(r"^description:.*$", "description:", text, flags=re.M))
+    assert setup_skill_findings(text.replace("uvx invisible-playwright fetch", "uvx aihawk"))
+    assert setup_skill_findings(text.split("---", 2)[2])
 
 
 def test_the_two_mcp_configurations_are_the_same_bytes():
@@ -327,7 +371,10 @@ def test_the_checks_refuse_known_bad_input():
     g = copy.deepcopy(d["plugins"]); g["plugin.json"]["description"] = "something else"
     assert plugin_findings(d["package_name"], d["manifest"], g)
 
-    g = copy.deepcopy(d["plugins"]); g[".cursor-plugin/plugin.json"]["name"] = "ai-hawk"
+    g = copy.deepcopy(d["plugins"]); g["gemini-extension.json"]["name"] = "ai-hawk"
+    assert plugin_findings(d["package_name"], d["manifest"], g)
+
+    g = copy.deepcopy(d["plugins"]); g[".claude-plugin/plugin.json"]["version"] = "1.0.0"; g["gemini-extension.json"]["version"] = "1.0.0"
     assert plugin_findings(d["package_name"], d["manifest"], g)
 
     g = copy.deepcopy(d["plugins"]); g["mcp.json"]["mcpServers"]["aihawk"]["command"] = "python"
@@ -349,9 +396,6 @@ def test_the_checks_refuse_known_bad_input():
     assert plugin_findings(d["package_name"], d["manifest"], g)
 
     g = copy.deepcopy(d["plugins"]); g[".mcp.json"]["mcpServers"]["aihawk"]["command"] = "python"
-    assert plugin_findings(d["package_name"], d["manifest"], g)
-
-    g = copy.deepcopy(d["plugins"]); g[".cursor-plugin/plugin.json"]["logo"] = "assets/missing.png"
     assert plugin_findings(d["package_name"], d["manifest"], g)
 
     g = copy.deepcopy(d["plugins"]); g["gemini-extension.json"]["version"] = "9.9.9"
