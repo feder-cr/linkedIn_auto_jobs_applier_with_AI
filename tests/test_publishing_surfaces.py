@@ -350,7 +350,24 @@ def test_the_two_mcp_configurations_are_the_same_bytes():
     """`mcp.json` for Agent Plugins, `.mcp.json` for Claude Code: two names
     because two specifications demand two paths, one content because a second
     source of truth diverges. Byte equality, not "equivalent JSON", so a change
-    to one is a change to both or it is a red test."""
+    to one is a change to both or it is a red test.
+
+    ⛔ MEASURED, SO THE TWIN IS NOT A GUESS. Claude Code 2.1.258, four plugins
+    with distinct names in one marketplace so no cache entry could collide,
+    each installed into a throwaway `CLAUDE_CONFIG_DIR`: `.mcp.json` alone
+    delivers the server, the manifest pointer delivers none, the inline form
+    delivers none, and BOTH FILES TOGETHER - what we ship - delivers one. The
+    documentation describes all three forms; two of them do not work. So the
+    duplication is imposed on us, not chosen, and the twin is proven harmless.
+
+    ⛔ AND `.mcp.json` CARRYING THE AGENT PLUGINS `$schema` IS DELIBERATE.
+    Claude Code asks for no `$schema` and ignores fields it does not know,
+    which the measurement above confirms. Dropping it from that copy would buy
+    a tidier file and cost the strongest property this pair has: that the two
+    are the same bytes, which is what makes drift between them impossible to
+    miss. A field a loader ignores is a smaller price than a second content to
+    keep in step by hand.
+    """
     d = _load()
     a, b = d["mcp_bytes"]["mcp.json"], d["mcp_bytes"][".mcp.json"]
     assert a == b, ("mcp.json and .mcp.json differ; they are one configuration under "
