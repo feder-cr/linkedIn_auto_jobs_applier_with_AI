@@ -691,8 +691,9 @@ async def browser_open(browser: Browser | None = None, seed: int | None = None,
         # the interface and the tests call these functions directly, and a
         # third browser called `b3` is the thing two fixed roles exist to rule
         # out.
-        return ("there are two browsers here: `main`, your own identity, and "
-                "`support`, the helper beside it. There is no %r." % role)
+        raise ValueError("there are two browsers here: `main`, your own "
+                         "identity, and `support`, the helper beside it. "
+                         "There is no %r." % role)
 
     try:
         chosen = plan.plan_session(seed=seed, proxy=proxy, profile=profile)
@@ -701,7 +702,7 @@ async def browser_open(browser: Browser | None = None, seed: int | None = None,
         # hand the caller a different person than the one they asked for, and
         # whatever is already running is deliberately left alone: a refusal
         # must not cost somebody the browser they already had.
-        return "refused: %s" % exc
+        raise ValueError("refused: %s" % exc)
     settings = chosen.kwargs
 
     at = addressed(role)
@@ -732,12 +733,13 @@ async def browser_open(browser: Browser | None = None, seed: int | None = None,
         # on". Nothing is running there now, and every later tool will repeat
         # this refusal rather than quietly starting a browser without the exit
         # that was asked for.
-        return ("the %s browser did NOT start: %s\n"
-                "Nothing is browsing there, and the tools will keep failing "
-                "until browser_open succeeds. A proxy that is down is the "
-                "usual cause; try another exit, or pass proxy=\"\" to go out "
-                "from this machine knowing that is what you are doing."
-                % (role, exc))
+        raise RuntimeError(
+            "the %s browser did NOT start: %s\n"
+            "Nothing is browsing there, and the tools will keep failing "
+            "until browser_open succeeds. A proxy that is down is the "
+            "usual cause; try another exit, or pass proxy=\"\" to go out "
+            "from this machine knowing that is what you are doing."
+            % (role, exc))
 
     remember()
     return "the %s browser is open. %s" % (role, plan.describe(registry.config(at) or {}))

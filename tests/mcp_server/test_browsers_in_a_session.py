@@ -127,7 +127,13 @@ async def test_a_third_browser_is_refused_and_the_refusal_says_where_to_go(regis
     held = server.browsers_in()
     assert len(held) == server.MAX_BROWSERS_PER_SESSION
 
-    said = await server.browser_open(browser="one-too-many")
+    # ⛔ AND IT IS RAISED, NOT RETURNED. A refusal handed back as a successful
+    # result reaches a client with `isError` false, so a careful one records it
+    # as a browser that opened. The sentence is unchanged; what changed is that
+    # the protocol now carries the fact that it failed.
+    with pytest.raises(ValueError) as refused:
+        await server.browser_open(browser="one-too-many")
+    said = str(refused.value)
 
     assert server.browsers_in() == held, "a third browser was opened anyway"
     assert "main" in said and "support" in said, (
