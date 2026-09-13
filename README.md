@@ -5,7 +5,7 @@
   <img alt="AIHawk" src="https://raw.githubusercontent.com/feder-cr/AIHawk/main/assets/aihawk-logo-light.png" width="380">
 </picture>
 
-**AIHawk is an anti detect browser and web browsing agent, open source, with a browser MCP for coding agents: undetected, no captchas, no blocks. Tell it what you want in plain language.**
+**AIHawk is an anti detect browser and web browsing agent, open source, with an MCP server for coding agents: undetected, no captchas, no blocks. Tell it what you want in plain language.**
 
 <sub>FEATURED IN</sub><br>
 [**Business Insider**](https://www.businessinsider.com/aihawk-applies-jobs-for-you-linkedin-risks-inaccuracies-mistakes-2024-11) ·
