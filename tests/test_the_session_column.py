@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import pytest
 
+from aihawk import chats
 from aihawk.mcp import store
 from aihawk.web import (PAGE, DEFAULT_CHAT_ID, UNNAMED, Sessions,
                         build_app)
@@ -162,7 +163,7 @@ async def test_the_column_shows_conversations_that_have_not_been_saved_yet():
     """A session opened a moment ago has nothing on disk. Leaving it out makes
     the column disagree with the page drawn beside it.
 
-    Known-bad: build `listing` from `store.known_chats()` alone.
+    Known-bad: build `listing` from `chats.known_chats()` alone.
     """
     _, sessions = _sessions()
     fresh = await sessions.new()
@@ -206,11 +207,11 @@ async def test_a_conversation_is_written_down_when_a_turn_ends_not_on_a_timer():
     """
     _, sessions = _sessions()
     mine = await sessions.get("lavoro")
-    assert store.load_chat("lavoro") is None
+    assert chats.load_chat("lavoro") is None
 
     await mine.send("do the thing")
 
-    saved = store.load_chat("lavoro")
+    saved = chats.load_chat("lavoro")
     assert saved is not None and saved["name"].startswith("do the thing")
 
 
@@ -228,7 +229,7 @@ async def test_a_run_that_failed_is_saved_too():
     mine = await sessions.get("lavoro")
     await mine.send("do the impossible")
 
-    saved = store.load_chat("lavoro")
+    saved = chats.load_chat("lavoro")
     assert saved is not None
     assert any("the model refused" in e["text"] for e in saved["history"])
 
@@ -266,7 +267,7 @@ async def test_deleting_a_conversation_closes_its_own_connection(caplog):
     assert links["lavoro"].closed, (
         "the conversation is gone and its own connection is still open, which "
         "on a real process means its browsers are still running")
-    assert store.load_chat("lavoro") is None
+    assert chats.load_chat("lavoro") is None
     assert "lavoro" not in [r["id"] for r in sessions.listing()]
 
 
@@ -321,7 +322,7 @@ async def test_a_deleted_conversation_stays_deleted_while_a_page_is_still_open_o
 
     assert "lavoro" not in [r["id"] for r in sessions.listing()], (
         "asking about a deleted conversation brought it back")
-    assert store.load_chat("lavoro") is None
+    assert chats.load_chat("lavoro") is None
 
 
 async def test_deleting_one_that_is_already_gone_is_not_reported_as_a_refusal():
@@ -332,7 +333,7 @@ async def test_deleting_one_that_is_already_gone_is_not_reported_as_a_refusal():
     column does not poll, so a panel left open in another tab shows that row for
     as long as it stays open, and its cross is what the person clicks.
 
-    Known-bad: answer `store.erase_chat(...) or service is not None` again.
+    Known-bad: answer `chats.erase_chat(...) or service is not None` again.
     """
     _, sessions = _sessions()
     await (await sessions.get("lavoro")).send("log in somewhere")
@@ -472,7 +473,7 @@ async def test_the_column_can_be_listed_renamed_and_emptied_over_http():
 
     client.post("/sessions/rename", json={"id": made["id"], "name": "  la mia  "})
     assert (await sessions.get(made["id"])).name == "la mia"
-    assert store.load_chat(made["id"])["name"] == "la mia", (
+    assert chats.load_chat(made["id"])["name"] == "la mia", (
         "the new name lives only in memory, so a reload loses it")
 
     rows = client.get("/sessions").json()

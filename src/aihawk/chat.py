@@ -13,7 +13,8 @@ from typing import Dict, List, Optional
 
 from .brain import Brain
 from .link import Link
-from .mcp import store
+from . import chats
+from .storage import DEFAULT_SESSION_ID
 
 
 #: The conversation a page that names none is in.
@@ -27,7 +28,7 @@ from .mcp import store
 #: therefore have left the interface writing `chats/default.json` while the
 #: server wrote `sessions/lavoro.json`, with the test that names the invariant
 #: still green. One declaration cannot disagree with itself.
-DEFAULT_CHAT_ID = store.DEFAULT_SESSION_ID
+DEFAULT_CHAT_ID = DEFAULT_SESSION_ID
 
 #: What a conversation is called before it has been asked anything.
 UNNAMED = "New chat"
@@ -89,7 +90,7 @@ class ChatService:
         would be a strange way to report a full disk.
         """
         try:
-            store.save_chat(self.session_id, self.name, self.history,
+            chats.save_chat(self.session_id, self.name, self.history,
                             list(getattr(self._brain, "messages", []) or []),
                             self.usage)
         except Exception:
@@ -104,7 +105,7 @@ class ChatService:
         had. A new epoch makes it replay from the beginning instead of resuming
         into the middle of something else.
         """
-        saved = store.load_chat(self.session_id)
+        saved = chats.load_chat(self.session_id)
         if not saved:
             return False
         self.history = list(saved.get("history") or [])

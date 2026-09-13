@@ -176,7 +176,14 @@ jobs:
           python scripts/pack_bundle.py --smithery --output /tmp/bundle
           mkdir /tmp/unpacked
           python -c "import zipfile,glob; zipfile.ZipFile(glob.glob('/tmp/bundle/aihawk-*[0-9].mcpb')[0]).extractall('/tmp/unpacked')"
-          uv run --directory /tmp/unpacked python -m aihawk --help > /dev/null
+          # ⛔ NOT `--help`. That is what this step ran until 2026-09-13, and
+          # it proves the entry point imports, nothing more: a bundle that
+          # could not finish `initialize`, or answered `tools/list` with an
+          # empty list, was green all the way to a directory review. This
+          # starts the bundle with the command its OWN manifest declares and
+          # speaks MCP to it.
+          cp scripts/bundle_speaks_mcp.py /tmp/unpacked/
+          uv run --directory /tmp/unpacked python /tmp/unpacked/bundle_speaks_mcp.py /tmp/unpacked
 
   # 2026-09-04: aihawk 0.4.0 went to the index, then main gained two more
   # changes while pyproject still said 0.4.0. A release from there would have

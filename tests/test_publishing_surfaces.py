@@ -101,6 +101,60 @@ MCP_FILES = ("mcp.json", ".mcp.json")
 LAUNCH = {"command": "uvx", "args": ["aihawk"]}
 
 
+def _one_fact_many_files(manifest, plugins):
+    """The facts that are stated in more than one manifest and were checked in
+    none of them.
+
+    ⛔ AN AUDIT ON 2026-09-13 COUNTED 24 DUPLICATED FACTS AND FOUND 9 WITH
+    NOTHING HOLDING THEM TOGETHER: the licence in four files, the author in
+    three, the keyword list in three, the repository url in four, the display
+    title in three, and the registry's own description. Each is a hand-copy,
+    each is invisible when it drifts, and a directory shows whichever copy it
+    happened to read. The name, the description and the launch command were
+    already held; these are the rest.
+
+    Two differences are DELIBERATE and are asserted as differences, not
+    smoothed away, because an unexplained difference is how the next reader
+    decides one of them is a bug:
+
+    * `homepage`. The bundle manifest has `homepage`, `documentation` and
+      `support` as separate fields, so its homepage is the repository and its
+      documentation is the wiki. A plugin manifest has only `homepage`, so it
+      points at the wiki page for this server, which is the more useful of the
+      two for somebody who just installed a plugin. Same fact, different field
+      sets, and each file uses the most specific field it has.
+    * the PyPI summary in `pyproject.toml`. It addresses somebody choosing a
+      command to install, not somebody browsing a directory of MCP servers,
+      and it is tuned for that. It is not a copy of the directory description
+      and is not asserted to be one.
+    """
+    out = []
+    title = manifest.get("display_name")
+    for rel, doc in plugins.items():
+        if rel.endswith("plugin.json"):
+            if doc.get("license") != manifest.get("license"):
+                out.append("%s licenses the package as %r, the bundle manifest says %r"
+                           % (rel, doc.get("license"), manifest.get("license")))
+            if (doc.get("author") or {}).get("name") != (manifest.get("author") or {}).get("name"):
+                out.append("%s credits somebody other than the bundle manifest" % rel)
+            if doc.get("keywords") != manifest.get("keywords"):
+                out.append("%s carries different keywords from the bundle manifest, so the "
+                           "directories that read them describe the package differently" % rel)
+        shown = doc.get("displayName") if rel.endswith("plugin.json") else None
+        if shown is not None and shown != title:
+            out.append("%s shows the package as %r, the bundle manifest as %r"
+                       % (rel, shown, title))
+    repo = ((manifest.get("repository") or {}).get("url") or "").removesuffix(".git")
+    for rel, doc in plugins.items():
+        if rel.endswith("plugin.json"):
+            theirs = doc.get("repository")
+            if isinstance(theirs, dict):
+                theirs = theirs.get("url")
+            if (theirs or "").removesuffix(".git") != repo:
+                out.append("%s points at a different repository from the bundle manifest" % rel)
+    return out
+
+
 def plugin_findings(package_name, manifest, plugins):
     """Why a plugin loader or a crawler would read something other than what
     ships, or nothing. `manifest` is the bundle's, whose description is the
@@ -116,6 +170,7 @@ def plugin_findings(package_name, manifest, plugins):
                 out.append("%s names %r, the project is %r" % (rel, doc.get("name"), package_name))
             if doc.get("description") != description:
                 out.append("%s describes the package differently from the bundle manifest" % rel)
+    out += _one_fact_many_files(manifest, plugins)
     claude = plugins.get(".claude-plugin/plugin.json") or {}
     if "mcpServers" in claude:
         out.append("the Claude plugin manifest declares mcpServers; measured, Claude Code ignores "
@@ -367,6 +422,32 @@ def test_the_checks_refuse_known_bad_input():
 
     g = copy.deepcopy(d["plugins"]); del g["gemini-extension.json"]
     assert plugin_findings(d["package_name"], d["manifest"], g)
+
+    # The six facts that were stated in several files and held by nothing.
+    # Each drifts silently in a directory nobody re-reads, so each gets its
+    # own mutation rather than one that moves them together.
+    g = copy.deepcopy(d["plugins"]); g["plugin.json"]["license"] = "Apache-2.0"
+    assert plugin_findings(d["package_name"], d["manifest"], g)
+
+    g = copy.deepcopy(d["plugins"]); g[".claude-plugin/plugin.json"]["author"]["name"] = "somebody"
+    assert plugin_findings(d["package_name"], d["manifest"], g)
+
+    g = copy.deepcopy(d["plugins"]); g["plugin.json"]["keywords"] = ["browser"]
+    assert plugin_findings(d["package_name"], d["manifest"], g)
+
+    g = copy.deepcopy(d["plugins"]); g[".claude-plugin/plugin.json"]["displayName"] = "Ai Hawk"
+    assert plugin_findings(d["package_name"], d["manifest"], g)
+
+    g = copy.deepcopy(d["plugins"])
+    g["plugin.json"]["repository"] = "https://github.com/somebody/else"
+    assert plugin_findings(d["package_name"], d["manifest"], g)
+
+    # ⛔ AND THE ONE THAT MUST NOT FIRE: the `.git` suffix is how the bundle
+    # manifest spells the same repository, and a check that cannot see through
+    # it would refuse a correct tree. Measured against the real files.
+    g = copy.deepcopy(d["plugins"])
+    g["plugin.json"]["repository"] = d["manifest"]["repository"]["url"]
+    assert plugin_findings(d["package_name"], d["manifest"], g) == []
 
     g = copy.deepcopy(d["plugins"]); g["plugin.json"]["description"] = "something else"
     assert plugin_findings(d["package_name"], d["manifest"], g)

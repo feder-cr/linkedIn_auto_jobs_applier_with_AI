@@ -21,11 +21,12 @@ not.
 from __future__ import annotations
 
 import json
-import os
-import sys
 import time
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, Optional
+
+from ..storage import (DEFAULT_SESSION_ID, home, safe_name as _safe,
+                       write_atomically)
 
 
 #: The piece of work a caller that names none is in, and so the file it
@@ -43,44 +44,14 @@ from typing import Dict, List, Optional
 #: It belongs here rather than in the registry: the registry keys BROWSERS, and
 #: this names a piece of WORK, which is to say a file in this directory. The
 #: registry never needed it except as a default argument no caller used.
-DEFAULT_SESSION_ID = "default"
-
-
-def home() -> Path:
-    """Where sessions are kept.
-
-    `AIHAWK_HOME` wins, which is what the tests use and what lets somebody put
-    this on another disk. Otherwise the place each system expects, so a person
-    finds it where they would look for it rather than in a dotfile invented
-    here.
-    """
-    override = os.environ.get("AIHAWK_HOME")
-    if override:
-        return Path(override).expanduser()
-    if sys.platform == "win32":
-        base = os.environ.get("APPDATA") or (Path.home() / "AppData" / "Roaming")
-        return Path(base) / "aihawk"
-    if sys.platform == "darwin":
-        return Path.home() / "Library" / "Application Support" / "aihawk"
-    base = os.environ.get("XDG_DATA_HOME") or (Path.home() / ".local" / "share")
-    return Path(base) / "aihawk"
+#: Re-exported: the constant itself lives in `aihawk.storage`, because the
+#: interface's half needs the same value and a second literal is how the two
+#: halves would quietly start naming different pieces of work.
+_ = DEFAULT_SESSION_ID  # re-exported for callers that import it from here
 
 
 def _sessions_dir() -> Path:
     return home() / "sessions"
-
-
-def _safe(session_id: str) -> str:
-    """A session id as a file name, without letting one escape the directory.
-
-    Ids reach this from a tool argument, so a caller could send `../../etc` or a
-    colon that Windows refuses. Anything outside the allowed set becomes an
-    underscore rather than being rejected: a session should not become
-    unreachable because of the name somebody gave it.
-    """
-    allowed = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_"
-    cleaned = "".join(c if c in allowed else "_" for c in session_id)
-    return cleaned[:120] or "_"
 
 
 def path_of(session_id: str) -> Path:
@@ -101,7 +72,6 @@ def save(session_id: str, browsers: Dict[str, dict],
     one. A session file that will not parse is worse than an old one.
     """
     where = path_of(session_id)
-    where.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "id": session_id,
         # Inert, and kept anyway: nothing has read it since `session_list` was
@@ -116,9 +86,7 @@ def save(session_id: str, browsers: Dict[str, dict],
         "browsers": browsers,
     }
     blob = json.dumps(payload, indent=2, sort_keys=True).encode("utf-8")
-    beside = where.with_suffix(".json.writing")
-    beside.write_bytes(blob)
-    os.replace(beside, where)
+    write_atomically(where, blob)
     return where
 
 
@@ -150,98 +118,6 @@ def erase(session_id: str) -> bool:
     where = path_of(session_id)
     try:
         where.unlink()
-        return True
-    except FileNotFoundError:
-        return False
-    except Exception:
-        return False
-
-
-# --- the other half of a session: its conversation ---------------------------
-#
-# ⛔ A SEPARATE FILE, WRITTEN BY A SEPARATE PROCESS, AND THAT IS THE REASON.
-# The browsers above are written by the MCP SERVER; a conversation is written by
-# the INTERFACE, which reaches the server over stdio and is therefore another
-# program. One file with two writers is a race that costs somebody their
-# transcript on the day two writes land together, and neither process can see
-# the other to take a lock. So the session id is the join key and each writer
-# owns its own file, and the two live in separate directories: `known_chats`
-# globs one of them, and a browser file landing in it would be listed as a
-# conversation that has none.
-#
-# What is saved is the transcript as the PAGE draws it plus the transcript as
-# the MODEL holds it. Saving only the first would give somebody back a
-# conversation they can read and cannot continue - the follow-up box would still
-# be there, meaning nothing.
-
-
-def _chats_dir() -> Path:
-    return home() / "chats"
-
-
-def chat_path(session_id: str) -> Path:
-    return _chats_dir() / ("%s.json" % _safe(session_id))
-
-
-def save_chat(session_id: str, name: str, history: List[dict],
-              messages: List[dict], usage: Optional[dict] = None) -> Path:
-    """Write one conversation down. Returns where it went."""
-    where = chat_path(session_id)
-    where.parent.mkdir(parents=True, exist_ok=True)
-    payload = {
-        "id": session_id,
-        "name": name,
-        "saved": time.strftime("%Y-%m-%dT%H:%M:%S"),
-        "history": history,
-        "messages": messages,
-        "usage": usage or {},
-    }
-    blob = json.dumps(payload, indent=2).encode("utf-8")
-    beside = where.with_suffix(".json.writing")
-    beside.write_bytes(blob)
-    os.replace(beside, where)
-    return where
-
-
-def load_chat(session_id: str) -> Optional[dict]:
-    """One conversation as it was written, or None if there is nothing to read."""
-    try:
-        return json.loads(chat_path(session_id).read_bytes().decode("utf-8"))
-    except Exception:
-        return None
-
-
-def known_chats() -> List[dict]:
-    """Every saved conversation, newest first, WITHOUT its transcript.
-
-    The list is drawn every time somebody opens the page, and a session that has
-    been worked in all afternoon holds a transcript of thousands of lines.
-    Reading them all to show a column of names would make the cheapest thing the
-    interface does the most expensive.
-    """
-    out: List[dict] = []
-    try:
-        files = sorted(_chats_dir().glob("*.json"))
-    except Exception:
-        return out
-    for f in files:
-        try:
-            d = json.loads(f.read_bytes().decode("utf-8"))
-        except Exception:
-            continue
-        out.append({"id": d.get("id") or f.stem,
-                    "name": d.get("name") or d.get("id") or f.stem,
-                    "saved": d.get("saved") or "",
-                    "turns": sum(1 for e in (d.get("history") or [])
-                                 if e.get("kind") == "you")})
-    out.sort(key=lambda s: s.get("saved") or "", reverse=True)
-    return out
-
-
-def erase_chat(session_id: str) -> bool:
-    """Forget a saved conversation. Answers whether there was one."""
-    try:
-        chat_path(session_id).unlink()
         return True
     except FileNotFoundError:
         return False

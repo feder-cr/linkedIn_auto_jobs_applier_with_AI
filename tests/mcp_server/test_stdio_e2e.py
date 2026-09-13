@@ -3,6 +3,7 @@ from mcp import ClientSession
 from mcp.client.stdio import stdio_client
 
 from aihawk.mcp import store
+from aihawk.mcp import __version__ as aihawk_version
 
 from _stdio_helpers import server_params
 
@@ -14,6 +15,79 @@ async def test_stdio_lists_tools():
             await mcp.initialize()
             names = {t.name for t in (await mcp.list_tools()).tools}
             assert {"browser_navigate", "browser_take_screenshot"} <= names
+
+
+@pytest.mark.asyncio
+async def test_the_handshake_says_which_aihawk_this_is():
+    """⛔ THE VERSION ON THE WIRE IS OURS, NOT THE SDK'S.
+
+    `initialize` answers with a serverInfo, and a client uses it to say what
+    it connected to and to tie a defect to a release. `FastMCP` accepts no
+    `version=`, so the low-level server fell back to
+    `importlib.metadata.version("mcp")` and every build of this package
+    announced itself as the version of the SDK. Measured 2026-09-13 before the
+    fix: `1.28.0`.
+
+    Asserted here rather than in-process because this is a fact about the
+    HANDSHAKE, and the handshake only happens over a transport.
+    """
+    async with stdio_client(server_params()) as (read, write):
+        async with ClientSession(read, write) as mcp:
+            got = await mcp.initialize()
+            info = got.serverInfo
+            assert info.name == "stealth", info.name
+            assert info.version == aihawk_version, (
+                "the handshake says %r; this package is %r. A client cannot "
+                "tell which build it is driving." % (info.version, aihawk_version))
+            from importlib.metadata import version as _installed
+            sdk = _installed("mcp")
+            assert info.version != sdk or aihawk_version == sdk, (
+                "the handshake is announcing %s, which is the installed mcp "
+                "SDK's version. That is the defect this test exists for: the "
+                "low-level server falls back to the library's version when "
+                "nobody sets its own." % info.version)
+
+
+@pytest.mark.asyncio
+async def test_every_tool_reaches_the_wire_with_its_hints():
+    """⛔ WHAT IS REGISTERED IS NOT NECESSARILY WHAT GOES OUT.
+
+    Every other check on the tool surface calls `server.mcp.list_tools()` in
+    this process, which reads the registry rather than the protocol. If
+    FastMCP ever stopped carrying a field, twelve green tests would say
+    nothing and a client would see the loss. This one asks a real server over
+    a real stdio pipe, and it asks about ALL of them: the sibling above
+    checked two names out of sixteen.
+
+    The three groups are the ones `_says` declares, and the reason five tools
+    are additive rather than read-only is written where they are annotated.
+    """
+    read_only = {"browser_list", "browser_status", "browser_watch"}
+    additive = {"browser_read_text", "browser_snapshot", "browser_read_html",
+                "browser_take_screenshot", "browser_evaluate"}
+    acts = {"browser_open", "browser_close", "browser_navigate", "browser_click",
+            "browser_click_at", "browser_type", "browser_select_option",
+            "browser_press_key"}
+    async with stdio_client(server_params()) as (read, write):
+        async with ClientSession(read, write) as mcp:
+            await mcp.initialize()
+            tools = (await mcp.list_tools()).tools
+    by_name = {t.name: t for t in tools}
+    assert set(by_name) == read_only | additive | acts, sorted(
+        set(by_name) ^ (read_only | additive | acts))
+    for name, t in sorted(by_name.items()):
+        a = t.annotations
+        assert a is not None, "%s reached the wire with no annotations" % name
+        assert (a.title or "").strip(), "%s reached the wire with no title" % name
+        assert (t.description or "").strip(), "%s has no description" % name
+        assert t.inputSchema.get("type") == "object", name
+    for name in read_only:
+        assert by_name[name].annotations.readOnlyHint is True, name
+    for name in additive:
+        a = by_name[name].annotations
+        assert a.readOnlyHint is False and a.destructiveHint is False, name
+    for name in acts:
+        assert by_name[name].annotations.destructiveHint is True, name
 
 
 async def _open_main(session_id):
