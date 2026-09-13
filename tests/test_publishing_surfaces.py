@@ -26,16 +26,24 @@ publish.yml runs on the tag, which is after the bump, and would only find out
 at the end of a release. This test finds out on the pull request.
 
   3. Since 2026-09-13, five manifests at the root are read by plugin loaders
-     and directory crawlers: `.claude-plugin/plugin.json` (Claude Code plugin,
-     which points at `mcp.json`), `plugin.json` and `mcp.json` (the Agent
-     Plugins standard, which cursor.directory scans for), `.cursor-plugin/
-     plugin.json` (Cursor's marketplace) and `gemini-extension.json` (the
-     Gemini CLI gallery, which crawls the `gemini-cli-extension` topic). None
-     of them carries the package version - a manifest that just says `uvx
+     and directory crawlers: `.claude-plugin/plugin.json` (the Claude Code
+     plugin), `.mcp.json` (the only file Claude Code actually reads the server
+     from - see MCP_FILES), `plugin.json` and `mcp.json` (the Agent Plugins
+     standard, which cursor.directory scans for) and `gemini-extension.json`
+     (the Gemini CLI gallery, which crawls the `gemini-cli-extension` topic).
+     None of them carries the package version - a manifest that just says `uvx
      aihawk` does not change per release - but every one of them repeats the
      package name, the one-line description and the launch command, and the
      bundle manifest repeats the description too. Those are the copies this
      file makes agree.
+
+     ⛔ THIS PARAGRAPH SAID SOMETHING ELSE UNTIL 2026-09-13 EVENING, AND IT
+     CONTRADICTED THE CODE TEN LINES BELOW IT. It named `.cursor-plugin/
+     plugin.json`, removed in #1316, and said the Claude manifest "points at
+     `mcp.json`", which is the arrangement that shipped a plugin with no
+     tools. `PLUGIN_FILES` had been right the whole time. A docstring that
+     disagrees with the constant under it is how the next reader learns the
+     wrong thing from the file that exists to teach the right one.
 
 Every check is a function over strings and dicts, and a second test feeds them
 known-bad input: a check that has only ever said "consistent" is not a check.
@@ -223,9 +231,21 @@ def setup_skill_findings(text):
     return out
 
 
-def registry_findings(package_name, version, readme, server):
-    """Why the registry would refuse server.json, or nothing."""
+def registry_findings(package_name, version, readme, server, description=None):
+    """Why the registry would refuse server.json, or nothing.
+
+    ⛔ `description` WAS THE ONE DUPLICATED FACT THIS FUNCTION NEVER LOOKED AT.
+    An audit on 2026-09-13 listed the registry's own description among the
+    facts written in several files and checked in none, and the first pass at
+    closing that gap covered the plugin manifests and left this one out - the
+    registry is the single most visible listing we have. It is compared
+    against the bundle manifest's, which is the authority the plugin manifests
+    are already held to, so all six say one thing.
+    """
     out = []
+    if description is not None and server.get("description") != description:
+        out.append("server.json describes the package differently from the bundle "
+                   "manifest, and the registry is the listing most people see")
     if server.get("name") != REGISTRY_NAME:
         out.append("server.json names %r, the namespace is %r" % (server.get("name"), REGISTRY_NAME))
     if server.get("version") != version:
@@ -318,7 +338,8 @@ def bundle_findings(package_name, version, requires_python, manifest, mcpbignore
 
 def test_the_registry_entry_describes_the_package_that_ships():
     d = _load()
-    assert registry_findings(d["package_name"], d["version"], d["readme"], d["server"]) == []
+    assert registry_findings(d["package_name"], d["version"], d["readme"], d["server"],
+                      d["manifest"]["description"]) == []
 
 
 def test_the_bundle_is_the_one_the_spec_describes():
@@ -384,21 +405,30 @@ def test_the_readme_has_the_privacy_section_the_bundle_points_at():
 
 def test_the_checks_refuse_known_bad_input():
     d = _load()
-    good = registry_findings(d["package_name"], d["version"], d["readme"], d["server"])
+    good = registry_findings(d["package_name"], d["version"], d["readme"], d["server"],
+                      d["manifest"]["description"])
     assert good == [], good
 
+    s = copy.deepcopy(d["server"]); s["description"] = "something else entirely"
+    assert registry_findings(d["package_name"], d["version"], d["readme"], s,
+                             d["manifest"]["description"])
+
     s = copy.deepcopy(d["server"]); s["version"] = "0.0.1"
-    assert registry_findings(d["package_name"], d["version"], d["readme"], s)
+    assert registry_findings(d["package_name"], d["version"], d["readme"], s,
+                             d["manifest"]["description"])
 
     s = copy.deepcopy(d["server"]); s["packages"][0]["identifier"] = "somebody-else"
-    assert registry_findings(d["package_name"], d["version"], d["readme"], s)
+    assert registry_findings(d["package_name"], d["version"], d["readme"], s,
+                             d["manifest"]["description"])
 
     stripped = d["readme"].replace("mcp-name: " + REGISTRY_NAME, "mcp-name: io.github.someone/else")
-    assert registry_findings(d["package_name"], d["version"], stripped, d["server"])
+    assert registry_findings(d["package_name"], d["version"], stripped, d["server"],
+                             d["manifest"]["description"])
 
     glued = d["readme"].replace("mcp-name: " + REGISTRY_NAME + " -->", "mcp-name: " + REGISTRY_NAME + ".-->")
     assert glued != d["readme"]
-    assert registry_findings(d["package_name"], d["version"], glued, d["server"])
+    assert registry_findings(d["package_name"], d["version"], glued, d["server"],
+                             d["manifest"]["description"])
 
     def bundle(m=None, ignore=None):
         return bundle_findings(d["package_name"], d["version"], d["requires_python"],
