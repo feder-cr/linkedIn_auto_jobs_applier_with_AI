@@ -132,3 +132,41 @@ async def test_a_command_still_starts_a_declared_browser(registry):
 
     assert DEFAULT_SESSION_ID in registry.ids()[0], (
         "a command did not start the browser it was aimed at: %r" % registry.ids())
+
+
+async def test_every_reading_tool_refuses_instead_of_opening_one(registry):
+    """⛔ THE RULE EXTENDED TO THE OTHER FIVE, 0.48.0.
+
+    Until this version only `browser_watch` and `browser_list` went through the
+    peeking path. `browser_read_text`, `browser_snapshot`, `browser_read_html`,
+    `browser_take_screenshot` and `browser_evaluate` all went through `ready`,
+    so a question started a 665 MB engine and could reopen the url a restored
+    session was owed - while the same tools carried `readOnlyHint: true`.
+
+    Decided by the owner on 2026-09-13: these commands all need a browser, so
+    it has to have been opened first, with the command that opens it. The flag
+    is honest again because the behaviour moved, not because the flag did.
+
+    Asserted one tool at a time rather than in a loop over names, so a tool
+    that is added later and forgotten here is not silently covered by a
+    neighbour. The refusal must also SAY the way out: a model told only "no"
+    spends a turn trying the same thing again.
+    """
+    before = registry.ids()
+    for call in (server.browser_read_text(),
+                 server.browser_snapshot(),
+                 server.browser_read_html(),
+                 server.browser_take_screenshot(),
+                 server.browser_evaluate("1 + 1")):
+        with pytest.raises(RuntimeError) as refused:
+            await call
+        said = str(refused.value)
+        assert "browser_open" in said or "browser_navigate" in said, (
+            "the refusal does not name a way out, so the next turn has "
+            "nothing to try: %r" % said)
+        assert registry.ids() == before, (
+            "a look created a browser: %r" % registry.ids())
+    # The other half of the rule - that a COMMAND still starts one - is
+    # `test_a_command_still_starts_a_declared_browser` above. It was already
+    # here and already right; a second copy of it would be a second place to
+    # keep in step.

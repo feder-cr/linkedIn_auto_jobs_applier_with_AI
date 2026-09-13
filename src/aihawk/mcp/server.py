@@ -131,8 +131,13 @@ atexit.register(_close_sessions_at_exit)
 # skipping the two rungs in between - coordinates, and a screenshot - because
 # nothing had told it they were rungs.
 INSTRUCTIONS = """Two browsers, `main` and `support`, are already there. There is
-nothing to list, start or choose before acting: go straight to the task with
-browser_navigate on `main`, or browser_snapshot to see what it is already on.
+nothing to list or choose before acting: go straight to the task with
+browser_navigate on `main`, which opens it if it is not open yet.
+
+A LOOK DOES NOT OPEN A BROWSER. Every reading tool below needs one that is
+already running and says so plainly if none is. Send a command first -
+browser_navigate, or browser_open if you want to choose the identity, the exit
+or the profile - and then look.
 
 Drive the page the way a person would. Everything here goes
 through the real pointer and the real keyboard.
@@ -589,6 +594,47 @@ async def ready(browser_id=None):
     return session
 
 
+#: What a READ says when nothing is running.
+#:
+#: ⛔ NOT `NOTHING_RUNNING`, WHICH IS THE WATCH PANE'S SENTENCE. That one ends
+#: "any command aimed at one starts it", which stays true of a command and is
+#: exactly what stopped being true of a look. Reusing it would tell a model to
+#: retry the read it just made, which is the one thing that cannot work now.
+#: The interface compares against `NOTHING_RUNNING` to decide an idle pane from
+#: a broken capture, and only ever calls `browser_watch`, so a second sentence
+#: here cannot reach that comparison.
+NOTHING_TO_READ = ("no browser is running in %r, so there is nothing to read. "
+                   "Open one with browser_open, or send a command such as "
+                   "browser_navigate, which starts it. Reading does not.")
+
+
+async def already_open(browser_id=None):
+    """This browser for a READ: it must already be running, or this refuses.
+
+    ⛔ A LOOK DOES NOT WAKE A BROWSER, AND UNTIL 0.48.0 FIVE OF THEM DID.
+    `browser_read_text`, `browser_snapshot`, `browser_read_html`,
+    `browser_take_screenshot` and `browser_evaluate` went through `ready`,
+    which starts whatever it resolves and can reopen the url a restored
+    session was owed. So a question launched a 665 MB engine and reached the
+    network, and the tools said `readOnlyHint: true` while doing it.
+
+    The principle was already written one function down, in `looking`: a
+    question is not a command. Two tools used it and the other five did not.
+    This is the rest of that job, decided by the owner on 2026-09-13 in one
+    sentence: these commands all need a browser, so it has to have been opened
+    first, with the command that opens it.
+
+    What did NOT change: a COMMAND still starts a browser. `browser_navigate`,
+    the clicks, the typing and `browser_open` itself all still go through
+    `ready`, so the way in is one step and the ladder still begins with an
+    action. Only looking stopped being a way in.
+    """
+    session = looking(browser_id)
+    if session is None:
+        raise RuntimeError(NOTHING_TO_READ % (browser_id or DEFAULT_BROWSER_ID))
+    return session
+
+
 def looking(browser_id=None):
     """This browser only if it is ALREADY running. Never starts one.
 
@@ -928,7 +974,7 @@ async def browser_navigate(url: str, wait_until: str = "domcontentloaded",
                            browser_id=browser)
 
 
-@mcp.tool(annotations=_says("Read the page text"))
+@mcp.tool(annotations=_says("Read the page text", read_only=True))
 async def browser_read_text(selector: str = "body", max_chars: int = 6000,
                             browser: Browser | None = None) -> str:
     """The visible text of an element, with the markup gone.
@@ -942,11 +988,11 @@ async def browser_read_text(selector: str = "body", max_chars: int = 6000,
 
     `browser` is `main` unless you say `support`, and they share nothing."""
     return await actions.read_text(
-        await ready(browser),
+        await already_open(browser),
         selector, max_chars)
 
 
-@mcp.tool(annotations=_says("Snapshot the page"))
+@mcp.tool(annotations=_says("Snapshot the page", read_only=True))
 async def browser_snapshot(max_chars: int = 0, browser: Browser | None = None) -> str:
     """Title, url, and the interactive elements that are actually visible.
 
@@ -967,10 +1013,10 @@ async def browser_snapshot(max_chars: int = 0, browser: Browser | None = None) -
     `browser` is `main` unless you say `support`, and they share nothing.
     """
     return await actions.snapshot(
-        await ready(browser), max_chars)
+        await already_open(browser), max_chars)
 
 
-@mcp.tool(annotations=_says("Read the page HTML"))
+@mcp.tool(annotations=_says("Read the page HTML", read_only=True))
 async def browser_read_html(mode: str = "form", browser: Browser | None = None) -> str:
     """The page's HTML, cleaned down to what is worth reading.
 
@@ -990,16 +1036,16 @@ async def browser_read_html(mode: str = "form", browser: Browser | None = None) 
     `browser` is `main` unless you say `support`, and they share nothing.
     """
     return await actions.read_html(
-        await ready(browser), mode)
+        await already_open(browser), mode)
 
 
-@mcp.tool(annotations=_says("Take a screenshot"))
+@mcp.tool(annotations=_says("Take a screenshot", read_only=True))
 async def browser_take_screenshot(browser: Browser | None = None) -> Image:
     """One screenshot of this browser's page, on demand.
 
     `browser` is `main` unless you say `support`, and they share nothing."""
     png = await actions.screenshot_png(
-        await ready(browser))
+        await already_open(browser))
     return Image(data=png, format="png")
 
 
@@ -1110,7 +1156,7 @@ async def browser_press_key(key: str, browser: Browser | None = None) -> str:
         await ready(browser), key)
 
 
-@mcp.tool(annotations=_says("Read the page with JavaScript"))
+@mcp.tool(annotations=_says("Read the page with JavaScript", read_only=True))
 async def browser_evaluate(expression: str, browser: Browser | None = None) -> str:
     """READ from the page with JavaScript and get the result as JSON.
 
@@ -1131,7 +1177,7 @@ async def browser_evaluate(expression: str, browser: Browser | None = None) -> s
 
     `browser` is `main` unless you say `support`, and they share nothing."""
     return await actions.evaluate(
-        await ready(browser), expression)
+        await already_open(browser), expression)
 
 
 def main() -> None:
