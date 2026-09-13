@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Mapping, Optional
 
 from .chat import ChatService, DEFAULT_CHAT_ID
 from .link import Link
+from . import chats
 from .mcp import store
 
 
@@ -123,7 +124,7 @@ class Sessions:
         breaks. It is never shown - the name is - so it only has to be unique.
         """
         at = "s%d" % int(time.time() * 1000)
-        while at in self._live or store.load_chat(at) is not None:
+        while at in self._live or chats.load_chat(at) is not None:
             at += "x"
         return await self.get(at)
 
@@ -133,7 +134,7 @@ class Sessions:
         A conversation opened a moment ago has nothing on disk yet, and leaving
         it out would make the column disagree with the page it is drawn beside.
         """
-        rows = {r["id"]: dict(r) for r in store.known_chats()}
+        rows = {r["id"]: dict(r) for r in chats.known_chats()}
         for at, service in self._live.items():
             row = rows.setdefault(at, {"id": at, "saved": "", "turns": 0})
             row["name"] = service.name
@@ -172,7 +173,7 @@ class Sessions:
         """
         at = session_id or DEFAULT_CHAT_ID
         return (at == DEFAULT_CHAT_ID or at in self._live
-                or store.load_chat(at) is not None
+                or chats.load_chat(at) is not None
                 or store.load(at) is not None)
 
     async def rename(self, session_id: str, name: str) -> bool:
@@ -227,5 +228,5 @@ class Sessions:
             await service.link.close()
         self._live.pop(session_id, None)
         store.erase(session_id)
-        store.erase_chat(session_id)
+        chats.erase_chat(session_id)
         return True
