@@ -165,6 +165,16 @@ Tool names mirror the Microsoft Playwright MCP, so prompts written for it work
 here too, with one deliberate departure: **there are no tab tools.** Three
 groups: the two browsers, reading the page, and acting on it.
 
+**A look does not open a browser.** From 0.48.0 the reading tools -
+`browser_snapshot`, `browser_read_text`, `browser_read_html`,
+`browser_take_screenshot`, `browser_evaluate`, `browser_watch` and
+`browser_list` - all need one that is already running, and say so plainly if
+none is. Sending a command opens it: `browser_navigate` is enough, and
+`browser_open` is the one to use when you want to choose the identity, the
+exit or the profile. Before 0.48.0 a read started a browser on your behalf,
+which meant a question could launch the engine and reach the network while the
+tool told your client it only read.
+
 If the tools do not appear in your client, the fastest way to tell a broken
 registration from a broken server is to skip the client:
 [a thirty-line MCP client](writing-an-mcp-client-in-python.md) lists them with
