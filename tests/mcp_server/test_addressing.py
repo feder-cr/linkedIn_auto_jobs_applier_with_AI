@@ -116,9 +116,14 @@ async def test_a_caller_that_names_nothing_reaches_the_same_one_browser(registry
       caller is filed under "default/None", every tool agrees with every
       other, and only the second assertion sees it.
     """
+    # ⛔ A COMMAND OPENS, A LOOK DOES NOT (0.48.0). These tests used a read to
+    # bring a browser into being, which worked while the reads went through
+    # `ready`. They no longer do: reading a browser that is not running is
+    # refused. What is under test here is ADDRESSING, not who starts what, so
+    # the vehicle changes and the assertions do not.
+    third = await server.browser_navigate("http://127.0.0.1/")
     first = await server.browser_snapshot()
     second = await server.browser_read_text()
-    third = await server.browser_navigate("http://127.0.0.1/")
 
     assert first is second is third, (
         "one caller that named nothing was given more than one browser")
@@ -132,6 +137,13 @@ async def test_main_and_support_are_two_different_browsers(registry, echo):
     """Known-bad: have `addressed` ignore `browser_id`. Both calls then land on
     one key, the second returns the first browser, and `support` is `main`
     wearing a different name."""
+    # ⛔ A COMMAND OPENS, A LOOK DOES NOT (0.48.0). These tests used a read to
+    # bring a browser into being, which worked while the reads went through
+    # `ready`. They no longer do: reading a browser that is not running is
+    # refused. What is under test here is ADDRESSING, not who starts what, so
+    # the vehicle changes and the assertions do not.
+    await server.browser_navigate("http://127.0.0.1/")
+    await server.browser_navigate("http://127.0.0.1/", browser="support")
     main = await server.browser_read_text()
     support = await server.browser_read_text(browser="support")
 
@@ -157,6 +169,13 @@ async def test_a_rebuild_of_one_browser_leaves_the_others_alone(registry, echo,
       `main` is closed while the caller was working on `support`, and the last
       assertion goes red.
     """
+    # ⛔ A COMMAND OPENS, A LOOK DOES NOT (0.48.0). These tests used a read to
+    # bring a browser into being, which worked while the reads went through
+    # `ready`. They no longer do: reading a browser that is not running is
+    # refused. What is under test here is ADDRESSING, not who starts what, so
+    # the vehicle changes and the assertions do not.
+    await server.browser_navigate("http://127.0.0.1/")
+    await server.browser_navigate("http://127.0.0.1/", browser="support")
     main = await server.browser_read_text()
     support = await server.browser_read_text(browser="support")
 
@@ -190,6 +209,13 @@ async def test_opening_one_browser_does_not_restart_the_other(registry, echo):
     restarted whatever `browser` named, a browser appears where nobody asked
     for one, and two assertions go red.
     """
+    # ⛔ A COMMAND OPENS, A LOOK DOES NOT (0.48.0). These tests used a read to
+    # bring a browser into being, which worked while the reads went through
+    # `ready`. They no longer do: reading a browser that is not running is
+    # refused. What is under test here is ADDRESSING, not who starts what, so
+    # the vehicle changes and the assertions do not.
+    await server.browser_navigate("http://127.0.0.1/")
+    await server.browser_navigate("http://127.0.0.1/", browser="support")
     main = await server.browser_read_text()
     support = await server.browser_read_text(browser="support")
 
@@ -372,7 +398,16 @@ def test_no_tool_reaches_for_a_browser_on_its_own():
 
 def _tools_that_reach_a_browser():
     """The `@mcp.tool()` functions whose own body reaches the registry, whether
-    directly or through `_retrying`."""
+    directly or through one of the funnels.
+
+    ⛔ THERE ARE FOUR FUNNELS, NOT TWO, AND MISSING ONE MAKES THIS GATE GO
+    QUIET RATHER THAN RED. `ready` starts a browser and `_retrying` rebuilds
+    one; `already_open` (0.48.0) and `looking` reach one WITHOUT starting it,
+    and a tool that reaches a browser has to say which browser whether or not
+    it is allowed to open it. When the five reading tools moved from `ready`
+    to `already_open`, this scan found nine tools instead of fourteen and the
+    floor below caught it - which is the only reason the omission is written
+    here instead of having been absorbed by lowering the number."""
     tree = ast.parse(SERVER_PY.read_text(encoding="utf-8"))
     found = set()
     for node in ast.walk(tree):
@@ -392,7 +427,8 @@ def _tools_that_reach_a_browser():
                     and inner.func.attr in ADDRESSABLE):
                 found.add(node.name)
             if (isinstance(inner.func, ast.Name)
-                    and inner.func.id in ("_retrying", "ready")):
+                    and inner.func.id in ("_retrying", "ready", "already_open",
+                                          "looking")):
                 found.add(node.name)
     return found
 

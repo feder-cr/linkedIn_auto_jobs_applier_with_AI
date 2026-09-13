@@ -78,9 +78,10 @@ def test_the_reading_tools_are_the_ones_that_read():
     `browser_watch` and `browser_list` stay read-only because they really are:
     they go through the peeking path and refuse instead of opening anything.
     """
-    reads = {"browser_list", "browser_status", "browser_watch"}
-    additive = {"browser_read_text", "browser_snapshot", "browser_read_html",
-                "browser_take_screenshot", "browser_evaluate"}
+    reads = {"browser_list", "browser_status", "browser_watch",
+             "browser_read_text", "browser_snapshot", "browser_read_html",
+             "browser_take_screenshot", "browser_evaluate"}
+    additive = set()
     acts = {"browser_open", "browser_close", "browser_navigate", "browser_click",
             "browser_click_at", "browser_type", "browser_select_option",
             "browser_press_key"}
@@ -103,6 +104,15 @@ def test_a_tool_that_can_start_a_browser_is_not_marked_read_only():
     A tool whose body awaits `ready()` can start a browser. Read straight from
     the source with `ast`, because a name lookup would also match the word in
     a docstring, and that is how a gate ends up agreeing with a comment.
+
+    ⛔ WHAT THIS GUARDS CHANGED ON 2026-09-13 AND THE CHECK DID NOT HAVE TO.
+    It was written when five reading tools went through `ready` and declared
+    themselves additive, and it held them to that. Those tools now go through
+    `already_open`, which refuses instead of starting, so they are read-only
+    again and this passes with nothing to report. That is the useful state:
+    the rule is "a tool that can start a browser does not promise it only
+    reads", and it is now satisfied by the behaviour rather than by the
+    label. Moving any read back onto `ready` turns it red again.
     """
     import ast
     import inspect

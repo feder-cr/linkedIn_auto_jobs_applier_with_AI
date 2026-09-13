@@ -88,9 +88,10 @@ async def test_every_tool_reaches_the_wire_with_its_hints():
     The three groups are the ones `_says` declares, and the reason five tools
     are additive rather than read-only is written where they are annotated.
     """
-    read_only = {"browser_list", "browser_status", "browser_watch"}
-    additive = {"browser_read_text", "browser_snapshot", "browser_read_html",
-                "browser_take_screenshot", "browser_evaluate"}
+    read_only = {"browser_list", "browser_status", "browser_watch",
+                 "browser_read_text", "browser_snapshot", "browser_read_html",
+                 "browser_take_screenshot", "browser_evaluate"}
+    additive = set()
     acts = {"browser_open", "browser_close", "browser_navigate", "browser_click",
             "browser_click_at", "browser_type", "browser_select_option",
             "browser_press_key"}
