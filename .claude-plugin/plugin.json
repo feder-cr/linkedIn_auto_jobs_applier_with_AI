@@ -10,6 +10,5 @@
   "homepage": "https://github.com/feder-cr/AIHawk/wiki/mcp-server",
   "repository": "https://github.com/feder-cr/AIHawk",
   "license": "MIT",
-  "keywords": ["browser", "browser-agent", "web-automation", "playwright", "firefox", "computer-use"],
-  "mcpServers": "./mcp.json"
+  "keywords": ["browser", "browser-agent", "web-automation", "playwright", "firefox", "computer-use"]
 }

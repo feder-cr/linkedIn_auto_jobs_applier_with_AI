@@ -24,5 +24,6 @@ assets/*
 !assets/aihawk-icon-400.png
 plugin.json
 mcp.json
+.mcp.json
 gemini-extension.json
 server.json
