@@ -64,11 +64,27 @@ def _load():
         "manifest": json.loads((ROOT / "manifest.json").read_text(encoding="utf-8")),
         "mcpbignore": (ROOT / ".mcpbignore").read_text(encoding="utf-8"),
         "plugins": {rel: json.loads((ROOT / rel).read_text(encoding="utf-8")) for rel in PLUGIN_FILES},
+        "mcp_bytes": {rel: (ROOT / rel).read_bytes() for rel in MCP_FILES},
     }
 
 
-PLUGIN_FILES = (".claude-plugin/plugin.json", "plugin.json", "mcp.json",
+PLUGIN_FILES = (".claude-plugin/plugin.json", "plugin.json", "mcp.json", ".mcp.json",
                 ".cursor-plugin/plugin.json", "gemini-extension.json")
+#: ⛔ TWO NAMES FOR ONE CONFIGURATION, AND NEITHER IS OPTIONAL. Measured
+#: 2026-09-13 by installing the plugin in this machine's Claude Code from a
+#: local marketplace: with `mcp.json` and `"mcpServers": "./mcp.json"` in the
+#: manifest, `claude plugin details aihawk` reports **MCP servers (0)** - the
+#: plugin installs, validates, and delivers no tools at all. So does the
+#: inline form. Only a file named `.mcp.json` at the plugin root is read, with
+#: or without the manifest field, and it is read even carrying the Agent
+#: Plugins `$schema` and `type` keys. Meanwhile the Agent Plugins spec (§7.2.1)
+#: says the MCP configuration path is `mcp.json` and MUST NOT be loaded from an
+#: alternative path, which is what cursor.directory scans for.
+#:
+#: Hence both names, byte-identical, held equal here. `claude plugin validate`
+#: passed on the broken arrangement: a manifest that validates is not a
+#: manifest that works, and only running the thing said so.
+MCP_FILES = ("mcp.json", ".mcp.json")
 LAUNCH = {"command": "uvx", "args": ["aihawk"]}
 
 
@@ -88,22 +104,25 @@ def plugin_findings(package_name, manifest, plugins):
             if doc.get("description") != description:
                 out.append("%s describes the package differently from the bundle manifest" % rel)
     claude = plugins.get(".claude-plugin/plugin.json") or {}
-    if claude.get("mcpServers") != "./mcp.json":
-        out.append("the Claude plugin does not point at ./mcp.json, so it would carry a second server config")
+    if "mcpServers" in claude:
+        out.append("the Claude plugin manifest declares mcpServers; measured, Claude Code ignores "
+                   "both the path form and the inline form and reads only `.mcp.json` at the root, "
+                   "so the field promises something it does not deliver")
     agent = plugins.get("plugin.json") or {}
     if agent.get("$schema") != "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json":
         out.append("plugin.json does not declare the Agent Plugins 1.0.0 schema, and a client rejects it")
-    for rel, key in (("mcp.json", "aihawk"), ("gemini-extension.json", "aihawk")):
+    for rel, key in (("mcp.json", "aihawk"), (".mcp.json", "aihawk"), ("gemini-extension.json", "aihawk")):
         servers = (plugins.get(rel) or {}).get("mcpServers") or {}
         entry = servers.get(key) or {}
         if {k: entry.get(k) for k in LAUNCH} != LAUNCH:
             out.append("%s launches the server with %r, the README launches it with `uvx aihawk`"
                        % (rel, entry))
-    mcp = plugins.get("mcp.json") or {}
-    if mcp.get("$schema") != "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json":
-        out.append("mcp.json does not declare the Agent Plugins 1.0.0 schema")
-    if ((mcp.get("mcpServers") or {}).get("aihawk") or {}).get("type") != "stdio":
-        out.append("mcp.json does not say the transport is stdio, which the Agent Plugins schema requires")
+    for rel in MCP_FILES:
+        mcp = plugins.get(rel) or {}
+        if mcp.get("$schema") != "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json":
+            out.append("%s does not declare the Agent Plugins 1.0.0 schema" % rel)
+        if ((mcp.get("mcpServers") or {}).get("aihawk") or {}).get("type") != "stdio":
+            out.append("%s does not say the transport is stdio, which the Agent Plugins schema requires" % rel)
     logo = (plugins.get(".cursor-plugin/plugin.json") or {}).get("logo")
     if not logo or not (ROOT / logo).is_file():
         out.append("the Cursor plugin's logo %r is not a file in the repository" % logo)
@@ -157,7 +176,7 @@ BUNDLE_LAUNCH = {"command": "uv", "args": ["run", "--directory", "${__dirname}",
 #: check in scripts/pack_bundle.py is the second wall; this is the first.
 MUST_IGNORE = (".git/", ".github/", ".env", "tests/", "docs/", "articles/", "scripts/",
                "assets/*", "!assets/aihawk-icon-400.png", "plugin.json", "mcp.json",
-               "gemini-extension.json", "server.json")
+               ".mcp.json", "gemini-extension.json", "server.json")
 
 
 def bundle_findings(package_name, version, requires_python, manifest, mcpbignore):
@@ -226,6 +245,17 @@ def test_the_bundle_is_the_one_the_spec_describes():
 def test_the_plugin_manifests_launch_the_package_that_ships():
     d = _load()
     assert plugin_findings(d["package_name"], d["manifest"], d["plugins"]) == []
+
+
+def test_the_two_mcp_configurations_are_the_same_bytes():
+    """`mcp.json` for Agent Plugins, `.mcp.json` for Claude Code: two names
+    because two specifications demand two paths, one content because a second
+    source of truth diverges. Byte equality, not "equivalent JSON", so a change
+    to one is a change to both or it is a red test."""
+    d = _load()
+    a, b = d["mcp_bytes"]["mcp.json"], d["mcp_bytes"][".mcp.json"]
+    assert a == b, ("mcp.json and .mcp.json differ; they are one configuration under "
+                    "two names that two different loaders require")
 
 
 def test_the_readme_has_the_privacy_section_the_bundle_points_at():
@@ -310,6 +340,15 @@ def test_the_checks_refuse_known_bad_input():
     assert plugin_findings(d["package_name"], d["manifest"], g)
 
     g = copy.deepcopy(d["plugins"]); g[".claude-plugin/plugin.json"]["mcpServers"] = {"aihawk": LAUNCH}
+    assert plugin_findings(d["package_name"], d["manifest"], g)
+
+    g = copy.deepcopy(d["plugins"]); g[".claude-plugin/plugin.json"]["mcpServers"] = "./mcp.json"
+    assert plugin_findings(d["package_name"], d["manifest"], g)
+
+    g = copy.deepcopy(d["plugins"]); del g[".mcp.json"]
+    assert plugin_findings(d["package_name"], d["manifest"], g)
+
+    g = copy.deepcopy(d["plugins"]); g[".mcp.json"]["mcpServers"]["aihawk"]["command"] = "python"
     assert plugin_findings(d["package_name"], d["manifest"], g)
 
     g = copy.deepcopy(d["plugins"]); g[".cursor-plugin/plugin.json"]["logo"] = "assets/missing.png"
