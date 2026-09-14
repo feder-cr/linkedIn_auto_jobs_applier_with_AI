@@ -4,7 +4,8 @@ ONE loop. There were briefly two, which is how a README sentence saying "same
 machinery" becomes false without anybody editing it: the second copy gets a fix,
 the first does not, and the two answers diverge for a task that looks identical
 from outside. They were merged, so this loop now has exactly one consumer in
-the product (the interface, via `brain.py`) and one in the tests (`run_task`).
+the product (the interface, through `OpenRouterBrain` at the end of this
+file) and one in the tests (`run_task`).
 
 The narration is a parameter rather than a mode. The interface passes the
 callback that pushes events to the page; `run_task` passes nothing and gets
@@ -16,6 +17,8 @@ from __future__ import annotations
 import asyncio
 import json
 from typing import Awaitable, Callable, List, Optional
+
+from . import actions_help
 
 SYSTEM_PROMPT = (
     "You are a browser automation agent. You control a real, stealth Firefox "
@@ -330,3 +333,96 @@ async def run_task(mcp, task: str, *, client, model: str,
     tools = (await mcp.list_tools()).tools
     convo = Conversation(client, model, max_tokens=max_tokens)
     return await convo.run(task, mcp.call_tool, tools)
+
+
+# --- what the interface plugs in ----------------------------------------------
+
+class Brain:
+    """One method, on purpose.
+
+    Whatever fills this slot - a model, a script, a recorded trace - receives
+    what the user said, a way to act, and a way to narrate. Nothing above it
+    needs to know which of those it is. The tests bring stub brains of their
+    own; the product ships exactly one, below.
+    """
+
+    async def handle(self, text: str, link, say: Say) -> None:
+        raise NotImplementedError
+
+
+class OpenRouterBrain(Brain):
+    """The product: the loop above, narrating each step as it takes it.
+
+    A loop that returns an answer after ninety seconds of silence is a batch
+    job; the same loop narrating each step is something a person can watch,
+    interrupt and trust. The narration is not logging bolted on, it is the
+    feature. This class supplies the two things `Conversation` does not: a
+    transcript that survives an instruction, so the follow-up box means
+    something, and a narrator, so the work is visible while it happens.
+
+    It lived in a module of its own, `brain.py`, until 0.52.0: twenty-one
+    lines of code forwarding to this file, beside a docstring about a second
+    implementation removed in 0.4.0. One consumer of one loop is one file.
+    """
+
+    def __init__(self, client, model: str) -> None:
+        self._convo = Conversation(client, model)
+
+    def forget(self) -> None:
+        """Drop the transcript and start a new one, same client and model.
+
+        A new `Conversation` rather than a trimmed one: what makes the wait
+        grow is the transcript being resent whole every turn, and half a
+        transcript is a compromise nobody asked for - either the follow-up box
+        still means something or it does not.
+        """
+        self._convo = Conversation(self._convo.client, self._convo.model)
+
+    def remember(self, messages: list, usage: dict | None = None) -> None:
+        """Take up a transcript that was written down, and continue it.
+
+        The twin of `forget`, and the reason it exists is the same one stated
+        there from the other side: what the follow-up box means is the
+        transcript. A session reopened with the page showing the conversation
+        and the model holding nothing would answer "and now sort them by price"
+        with a question about what "them" is - worse than an empty chat, because
+        it looks like it remembers.
+
+        Written into the conversation this brain already has rather than by
+        building a new one: the client and the model are this process's, and the
+        file has no business deciding either.
+
+        ⛔ AND THE SYSTEM MESSAGE IS THIS PROCESS'S TOO, FOR THE SAME REASON.
+        A saved transcript carries the instructions as they were on the day the
+        conversation started, so restoring it wholesale put an OLD prompt back
+        and every change to `SYSTEM_PROMPT` reached new conversations only.
+        Found on 2026-09-08 while telling the model to stop decorating answers
+        with ticks and crosses: the change would have left every conversation
+        anybody had open still doing it, forever, and the file would have won
+        against the code with nothing saying so. The transcript is what was
+        SAID; the instructions are what this build asks for.
+        """
+        if messages:
+            self._convo.messages = (
+                [system_message()]
+                + [m for m in messages if m.get("role") != "system"])
+        if usage:
+            self._convo.usage.update(usage)
+
+    @property
+    def usage(self) -> dict:
+        return self._convo.usage
+
+    @property
+    def messages(self) -> list:
+        return self._convo.messages
+
+    async def handle(self, text: str, link, say: Say) -> None:
+        # Nothing is caught here. There used to be a handler for the turn
+        # ceiling, the one failure a person could act on by narrowing the task;
+        # the ceiling is gone, and every remaining failure is either the
+        # cancellation the stop button raises or something the interface's own
+        # handler already reports.
+        await self._convo.run(text, link.call, link.tools,
+                              instructions=getattr(link, "instructions", ""),
+                              say=say, describe=actions_help.summarise)

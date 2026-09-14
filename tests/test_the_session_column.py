@@ -27,8 +27,10 @@ import pytest
 
 from aihawk import chats
 from aihawk.mcp import store
-from aihawk.web import (PAGE, DEFAULT_CHAT_ID, UNNAMED, Sessions,
-                        build_app)
+from aihawk.chat import DEFAULT_CHAT_ID, UNNAMED
+from aihawk.routes import build_app
+from aihawk.sessions import Sessions
+from aihawk.ui import PAGE
 
 pytestmark = pytest.mark.asyncio
 
@@ -508,7 +510,7 @@ async def test_every_request_the_page_makes_carries_the_conversation():
     """
     import re
 
-    from aihawk.web import PAGE
+    from aihawk.ui import PAGE
 
     script = PAGE[PAGE.index("<script"):]
     # Every fetch of a route that reads `?s=` must go through `at()`. The three
@@ -548,7 +550,7 @@ async def test_a_queued_message_is_not_lost_when_the_page_goes_away():
     """
     import re
 
-    from aihawk.web import PAGE
+    from aihawk.ui import PAGE
 
     script = PAGE[PAGE.index("<script"):]
     code = re.sub(r"/\*.*?\*/", "", script, flags=re.S)

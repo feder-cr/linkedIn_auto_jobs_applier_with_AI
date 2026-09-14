@@ -108,6 +108,9 @@ const onEvent = (e) => {
                      anything else can appear. */
                   if(busyNow && !r) waiting();
                   break;
+    /* A note is the interface's own sentence - "Stopped." after the button -
+       and not the model's: named so the two cannot be confused later. */
+    case 'note':  flush(false, r); orphan('note', m.text, r); break;
     /* Deliberately total: a kind this page has never heard of is still shown,
        for the same reason an unknown tool still renders its arguments. */
     default:      flush(false, r); orphan('said', m.text, r);

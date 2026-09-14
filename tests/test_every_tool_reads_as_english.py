@@ -22,9 +22,9 @@ import re
 
 
 def _verbs_in_the_page() -> dict:
-    from aihawk import web
+    from aihawk.ui import PAGE
 
-    match = re.search(r"const VERB = \{(.*?)\};", web.PAGE, re.S)
+    match = re.search(r"const VERB = \{(.*?)\};", PAGE, re.S)
     assert match, "the VERB table is gone from the page, or has been renamed"
     return dict(re.findall(r"(\w+)\s*:\s*\[\s*'([^']*)'", match.group(1)))
 

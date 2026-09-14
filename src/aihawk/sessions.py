@@ -1,8 +1,7 @@
 """Every conversation this interface holds, and the way in to one.
 
-Split out of `web.py` on 2026-09-10. The classes are the same bytes they were -
-except for how a conversation reaches its browsers, rewritten on 2026-09-11 when
-MCP stopped having a session concept at all. See the class docstring below.
+How a conversation reaches its browsers was rewritten on 2026-09-11, when MCP
+stopped having a session concept at all. See the class docstring below.
 """
 from __future__ import annotations
 

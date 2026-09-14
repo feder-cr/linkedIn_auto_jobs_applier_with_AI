@@ -1,17 +1,11 @@
-"""One conversation: what was said, who is listening, and what it cost.
-
-Split out of `web.py` on 2026-09-10, which held this class, the registry above
-it and every route beside it in one 3370-line module. Nothing here changed in
-the move - the class is the same bytes - and `web.py` still exports it, because
-moving where something LIVES is not a reason to move where it is FOUND.
-"""
+"""One conversation: what was said, who is listening, and what it cost."""
 from __future__ import annotations
 
 import asyncio
 import time
 from typing import Dict, List, Optional
 
-from .brain import Brain
+from .agent import Brain
 from .link import Link
 from . import chats
 from .storage import DEFAULT_SESSION_ID

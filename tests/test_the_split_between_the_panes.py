@@ -22,7 +22,7 @@ import subprocess
 
 import pytest
 
-from aihawk.web import PAGE
+from aihawk.ui import PAGE
 
 NODE = shutil.which("node")
 FIRST = "const SPLITKEY ="

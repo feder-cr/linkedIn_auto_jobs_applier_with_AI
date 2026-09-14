@@ -11,7 +11,7 @@ import re
 
 from pathlib import Path
 
-from aihawk.web import PAGE
+from aihawk.ui import PAGE
 
 #: ⛔ BOTH COMMENT SYNTAXES. This page explains its own rules in prose
 #: beside the code, so a scan that only strips `/* */` gets accused by the
@@ -78,13 +78,16 @@ def test_every_event_the_server_can_send_is_drawn():
     Known-bad: emit a kind the page does not name, or drop a case for one it
     does.
     """
-    web = (Path(__file__).resolve().parents[1]
-           / "src" / "aihawk" / "web.py").read_bytes().decode("utf-8")
-    loop = (Path(__file__).resolve().parents[1]
-            / "src" / "aihawk" / "agent.py").read_bytes().decode("utf-8")
-    # Comments stripped from both sides, because this project has recorded the
+    # ⛔ EVERY MODULE THAT EMITS, NAMED. This read `web.py`, which from
+    # 2026-09-10 to 0.52.0 was forty lines of re-exports: the routes and the
+    # conversation had moved out of it, and the gate went on reading the
+    # door for kinds that were sent two files away. Green the whole time.
+    src = Path(__file__).resolve().parents[1] / "src" / "aihawk"
+    server = "".join((src / name).read_bytes().decode("utf-8")
+                     for name in ("routes.py", "chat.py", "agent.py"))
+    # Comments stripped, because this project has recorded the
     # gate-accused-by-a-comment defect more times than any other.
-    server = re.sub(r"#[^\n]*", "", web + loop)
+    server = re.sub(r"#[^\n]*", "", server)
     sends = set(re.findall(r"(?:emit|say)\(\s*\"([a-z]+)\"", server))
     sends |= set(re.findall(r'"kind":\s*"([a-z]+)"', server))
     sends -= {"kind"}

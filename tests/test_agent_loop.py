@@ -1099,7 +1099,7 @@ def test_a_reopened_conversation_gets_THIS_build_instructions():
 
     Known-bad: `self._convo.messages = list(messages)`, which is what it did.
     """
-    from aihawk.brain import OpenRouterBrain
+    from aihawk.agent import OpenRouterBrain
 
     brain = OpenRouterBrain(client=object(), model="m")
     brain.remember([
@@ -1183,7 +1183,7 @@ async def test_the_brain_hands_the_link_instructions_to_the_loop():
 
     Known-bad: drop `instructions=` from the brain's call.
     """
-    from aihawk.brain import OpenRouterBrain
+    from aihawk.agent import OpenRouterBrain
 
     class LinkWithInstructions:
         instructions = "Two browsers, main and support."

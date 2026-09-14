@@ -13,16 +13,16 @@ import zipfile
 from pathlib import Path
 
 from aihawk import ui
-from aihawk.web import PAGE
+from aihawk.routes import PAGE
 
 ASSETS = Path(ui.__file__).parent
 
 
 def test_the_page_the_module_exports_is_the_page_the_files_assemble():
-    """`web.PAGE` is what every route serves and what every gate reads. It has
-    to be the assembly, not a copy that can drift from it.
+    """What the routes serve is what every gate reads. It has to be the
+    assembly, not a copy that can drift from it.
 
-    Known-bad: give `web.py` a `PAGE` of its own again.
+    Known-bad: give `routes.py` a `PAGE` of its own.
     """
     assert PAGE is ui.PAGE, (
         "the module exports a different object from the one the files build, so "
