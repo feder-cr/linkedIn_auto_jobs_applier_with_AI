@@ -28,6 +28,32 @@ DEFAULT_CHAT_ID = DEFAULT_SESSION_ID
 #: What a conversation is called before it has been asked anything.
 UNNAMED = "New chat"
 
+#: Kinds that are STATE rather than conversation: told to whoever is listening
+#: NOW, and never written into the transcript.
+#:
+#: `busy` has been here from the start - replaying it to somebody who opens the
+#: page later would show a spinner for work that finished an hour ago.
+#:
+#: ⛔ `fresh` JOINED IT IN 0.57.0, AND IT COULD EAT A TYPED SENTENCE. It is the
+#: word that tells every page to wipe, and `reset` emits it immediately after
+#: clearing the history - so it landed in the now-empty transcript and became
+#: the ONE thing a cleared conversation had written down. Found by reading a
+#: real saved file, not by a test: the developer's own `default.json` held
+#: exactly one event, and it was this.
+#:
+#: What that costs is small and is the one thing this interface must not do. A
+#: replayed `fresh` runs `wipe()` in the page, and `wipe()` calls
+#: `setQueued(null)`: so a person who had typed a follow-up while the agent
+#: worked, on a conversation that had been cleared at any point in its past,
+#: lost that sentence the moment the stream reconnected from before the stored
+#: `fresh` - which is exactly what a server restart does. Nothing said so.
+#:
+#: The live path is untouched: `/chat/fresh` still emits it and every listener
+#: still wipes, which is what makes two tabs agree. A page that arrives LATER
+#: needs no command, because what it is handed is already the empty transcript
+#: the command would have produced.
+NOT_SAID = ("busy", "fresh")
+
 
 class ChatService:
     """One conversation, its listeners, and the link it drives."""
@@ -119,10 +145,7 @@ class ChatService:
 
     async def emit(self, kind: str, text: str) -> None:
         event = {"kind": kind, "text": text}
-        # `busy` is STATE, not conversation: replaying it to somebody who
-        # opens the page later would show a spinner for work that finished
-        # an hour ago.
-        if kind != "busy":
+        if kind not in NOT_SAID:
             self.history.append(event)
         for q in list(self._listeners):
             q.put_nowait(event)
