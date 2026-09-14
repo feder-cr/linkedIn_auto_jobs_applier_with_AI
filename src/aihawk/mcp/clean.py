@@ -92,17 +92,64 @@ GENERIC_CONTAINERS = ("div", "span", "section", "article", "aside", "main", "hea
 # buttons on the modern web are a div with a role and a click handler, and a
 # list closed to form elements does not look for them at all.
 INTERACTIVE_TAGS = ("input", "select", "textarea", "button")
-INTERACTIVE_ROLES = frozenset({
+
+# ⛔ ONE DECLARATION, READ BY THE SIEVE AND BY THE SNAPSHOT, and it is split
+# because the two need the SAME list with ONE difference, which is better said
+# than left to two lists that drift.
+#
+# It was two lists. This one had nineteen roles; the snapshot's selector had
+# seven, written out by hand in a JavaScript string two modules away. Measured
+# 2026-09-15 on a page of ARIA controls: a `role=combobox` and a `role=slider`
+# with no `tabindex` were returned by `browser_read_html` and were NOT in
+# `browser_snapshot` - which is the tool the instructions name as the way to
+# find something to click. Seven real controls, invisible to the rung the
+# ladder starts on.
+#
+# Roles that name ONE control. A caller acts on the thing itself.
+CONTROL_ROLES = frozenset({
     "button", "link", "checkbox", "radio", "tab", "menuitem", "menuitemcheckbox",
     "menuitemradio", "switch", "combobox", "textbox", "searchbox", "slider",
-    "spinbutton", "option", "listbox", "treeitem", "gridcell", "columnheader",
+    "spinbutton", "listbox", "treeitem", "columnheader",
 })
+
+# Roles that name a MEMBER of a collection, where one widget can contribute
+# hundreds. The sieve KEEPS them - they are interactive, and deleting them
+# would break the invariant at the top of this module - and the snapshot does
+# not inventory them, for the reason its own docstring already measured: a
+# single country `<select>` contributes about two hundred `<option>` nodes,
+# which fill the answer before the form somebody was looking for appears.
+#
+# `option` is that measurement. `gridcell` is the same argument applied to a
+# data grid, which is an inference from it rather than a second measurement,
+# and it is written here rather than assumed so the next reader can disagree
+# with it in one place.
+MANY_PER_WIDGET_ROLES = frozenset({"option", "gridcell"})
+
+INTERACTIVE_ROLES = CONTROL_ROLES | MANY_PER_WIDGET_ROLES
 # Structure that explains the controls: which label belongs to which field.
 FORM_STRUCTURE = ("label", "form", "fieldset", "legend", "optgroup", "option", "datalist", "output")
 
 INTERACTIVE_CSS = (
     "a[href],button,input,select,textarea,[onclick],[contenteditable],"
     "[tabindex]:not([tabindex='-1']),[role]"
+)
+# A wide net, deliberately: `[role]` catches every role and `is_interactive`
+# decides. Cheap to query, and the predicate is the one that rules.
+
+#: The same declaration as a selector the SNAPSHOT can hand to the page, where
+#: there is no `is_interactive` to filter afterwards - so the roles are named
+#: one by one and the collection members are the ones left out.
+#:
+#: Built by joining rather than written out, because a second hand-written list
+#: is exactly what this replaced. And built by CONCATENATION rather than by
+#: substituting into the JavaScript that uses it: a placeholder searched for
+#: inside a block of code finds it inside the CALLER's code too, which is a
+#: defect this project shipped one layer down and removed on 2026-09-14.
+SNAPSHOT_CSS = ",".join(
+    list(INTERACTIVE_TAGS)
+    + ["a[href]"]
+    + ["[role='" + role + "']" for role in sorted(CONTROL_ROLES)]
+    + ["[onclick]", "[tabindex]:not([tabindex='-1'])", "[contenteditable='true']"]
 )
 
 # Attributes worth their bytes. Everything else goes: `class` alone routinely

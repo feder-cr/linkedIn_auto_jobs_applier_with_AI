@@ -298,9 +298,17 @@ def mcp_tools(server_path):
 #: ⛔ What it does NOT see, said plainly so nobody trusts it wider than it is:
 #: the TOKEN figure. Counting tokens needs a tokenizer this gate does not have
 #: and should not grow a dependency for. The token count rides in the same
-#: sentences as the character count, so a stale one is very likely caught by its
-#: neighbour - "very likely" is not "always", and that gap is the honest size of
-#: this gate.
+#: sentences as the character count, so a stale one is caught by its neighbour.
+#:
+#: ⛔ THAT USED TO READ "very likely caught", AND THE HEDGE WAS MEASURABLE.
+#: Measured 2026-09-15, while moving the figure for real: of the fourteen pages
+#: publishing the token count, TWO published it with no character count beside
+#: it, so on those two the neighbour protected nothing and a stale number would
+#: have shipped. The two were given the character figure they were missing, and
+#: `check_token_has_a_neighbour` below now holds the arrangement instead of
+#: hoping for it - which costs no tokenizer, because it checks that the guarded
+#: number is present rather than that the unguarded one is right.
+TOKENS_RE = re.compile(r"\*{0,2}([\d,]{3,})\*{0,2}\s+tokens\b")
 SURFACE_TOOLS_RE = re.compile(r"\*{0,2}(\d+)\*{0,2}\s+tools\b")
 #: Two shapes, because the corpus writes it two ways and the gate reads what
 #: the corpus writes rather than demanding the corpus write what the gate
@@ -316,6 +324,44 @@ SURFACE_CHARS_RE = re.compile(
 def _surface_number(match):
     """The captured figure, whichever of the two shapes matched."""
     return match.group(1) or match.group(2)
+
+
+def check_token_has_a_neighbour(rel, text, count):
+    """A page publishing this server's TOKEN figure must publish the character
+    figure too, because the character figure is the one this gate can check.
+
+    ⛔ THE POINT IS NOT THE TOKEN NUMBER, WHICH NOTHING HERE CAN VERIFY. It is
+    that a page carrying an unverifiable number should carry a verifiable one
+    beside it, so moving the measurement cannot leave a stale figure behind
+    with nothing to say so. Two pages published the token count alone until
+    2026-09-15 and were exactly that hole.
+
+    Scoped to pages that are talking about THIS server, by the same anchor the
+    rest of this check uses: the tool count in bold beside the claim. A page
+    quoting somebody else's token figure is not making this claim and is not
+    accused of it.
+
+    ⛔ AND THE ANCHOR IS ONLY THAT, because a looser one accused a healthy
+    paragraph on the first run: `which-model-to-use-with-aihawk.md` says "our
+    own" while talking about a MODEL's context window of 1,310,720 tokens,
+    which is a token figure this gate has no business having an opinion about.
+    A gate that is red on a correct line teaches people to route around it.
+    """
+    out = []
+    ours = "**%d tools" % count
+    for para in re.split(r"\n\s*\n", text):
+        flat = " ".join(para.split())
+        if ours not in flat:
+            continue
+        if not TOKENS_RE.search(flat):
+            continue
+        if SURFACE_CHARS_RE.search(flat):
+            continue
+        out.append(
+            "%s: publishes a token figure for this server with no character "
+            "figure beside it, and the character figure is the only one this "
+            "gate can check: %s" % (rel, flat[:120]))
+    return out
 
 
 def tool_surface(server_path):
@@ -444,6 +490,7 @@ def check_tree(root):
 
         if surface is not None:
             findings.extend(check_surface(rel, text, surface[0], surface[1]))
+            findings.extend(check_token_has_a_neighbour(rel, text, surface[0]))
 
         if launcher is not None:
             findings.extend(check_way_in(rel, text, launcher, block, readme_text))
@@ -560,6 +607,12 @@ def selftest():
             "stale tool count beside a size claim": (
                 "docs/both.md",
                 b"**24 tools**, 8 characters of description, resent every turn\n"),
+            # The hole measured 2026-09-15: a token figure with nothing
+            # checkable beside it. Two real pages were exactly this, and a
+            # stale number there would have shipped without a word.
+            "a token figure with no character figure beside it": (
+                "docs/lonely.md",
+                b"**2 tools**, 3,159 tokens, resent on every single turn\n"),
         }
         for label, (rel, content) in bad.items():
             p = root / rel
@@ -607,6 +660,16 @@ def selftest():
             "the right figures": (
                 "docs/right.md",
                 b"**2 tools**, 8 characters of description, every turn\n"),
+            "a token figure WITH the checkable one beside it": (
+                "docs/pair.md",
+                b"**2 tools**, 8 characters of description, 3,159 tokens "
+                b"resent every turn\n"),
+            # The healthy line the first draft accused: a token count about a
+            # MODEL, on a page that also says "our own".
+            "somebody else's token figure, on a page that says our own": (
+                "docs/ctx.md",
+                b"our own default model has a 1,310,720 token context window, "
+                b"which is what stops a run\n"),
             "the README's install lines, verbatim": (
                 "docs/same.md",
                 b"```powershell\n"

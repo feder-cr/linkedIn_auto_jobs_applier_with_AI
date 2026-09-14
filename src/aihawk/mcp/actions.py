@@ -144,17 +144,20 @@ async def read_text(session, selector: str = "body", max_chars: int = DEFAULT_MA
         "selector to the part you need.]" % (max_chars, len(txt)))
 
 
+#: ⛔ THE SELECTOR COMES FROM `clean.py` AND IS NOT WRITTEN HERE. It was a
+#: hand-typed list of seven roles beside a declaration of nineteen, in another
+#: module, in a language where nothing could compare them - so they drifted,
+#: and the measured cost is in the comment beside `CONTROL_ROLES`.
+#:
+#: Joined by CONCATENATION, never by substituting a placeholder into this
+#: block: a placeholder searched for inside code is found inside the caller's
+#: code too. This file holds 12 literal `%` characters, so a format string over
+#: it would not survive either - two independent reasons for the same shape.
 SNAPSHOT_JS = """() => {
     // Read only. Numbering the elements would mean writing an attribute into
     // the page, which is a detection surface in a product that exists not to
     // have one. If a stable index is ever wanted, it gets decided in the open.
-    const SEL = [
-        'input', 'button', 'select', 'textarea', 'a[href]',
-        '[role="button"]', '[role="link"]', '[role="checkbox"]',
-        '[role="radio"]', '[role="tab"]', '[role="menuitem"]', '[role="switch"]',
-        '[onclick]', '[tabindex]:not([tabindex="-1"])',
-        '[contenteditable="true"]'
-    ].join(',');
+    const SEL = """ + json.dumps(clean.SNAPSHOT_CSS) + """;
 
     // offsetParent used to stand in for "visible" and was wrong both ways: it is
     // null on every position:fixed element - the cookie banner, the sticky bar,

@@ -22,9 +22,7 @@ from . import actions_help
 
 SYSTEM_PROMPT = (
     "You are a browser automation agent. You control a real, stealth Firefox "
-    "browser ONLY through the provided tools. Open the browser with "
-    "browser_open before anything else; if a tool answers that the browser "
-    "is not open or is gone, call browser_open and carry on. Inspect pages with "
+    "browser ONLY through the provided tools. Inspect pages with "
     "browser_read_text / browser_snapshot / browser_read_html before acting on "
     "them. A person may be watching the browser while you work, so prefer one "
     "clear action at a time over long chains. When the task is done: first close "
@@ -68,6 +66,27 @@ def system_message(instructions: str = "") -> dict:
     whoever opens it closes it - were in neither. They travel with the link
     and are refreshed at the start of every run, so a restored transcript and
     a new one carry the same current instructions.
+
+    ⛔ AND THE TWO HALVES SAY DIFFERENT THINGS NOW. This prompt used to open
+    with "open the browser with browser_open before anything else; if a tool
+    answers that the browser is not open or is gone, call browser_open and
+    carry on" - which is the server's first paragraph, in other words, glued
+    to it a few lines later. The model read the same rule twice in one
+    message, and two copies of a rule are two things to keep in agreement.
+
+    The rule belongs to the server: it is a fact about the tools, and a
+    standalone client that never sees this prompt still has to be told it.
+    What is left here is what this loop owns - how the agent behaves, and how
+    it WRITES.
+
+    ⛔ AND MOVING IT MEANS THE SERVER MUST ACTUALLY STILL SAY IT, which is a
+    thing to hold rather than to trust. A first draft of this change also made
+    an empty `instructions` append a warning for the model to read; that was
+    dropped, because the link launches this very server, so arriving here with
+    nothing means the handshake failed and a sentence in the prompt helps
+    nobody in that state. What guards the move instead is a gate over the
+    server's own text: the rule has one home, and the gate says the home is
+    not empty.
     """
     text = SYSTEM_PROMPT
     if instructions:
