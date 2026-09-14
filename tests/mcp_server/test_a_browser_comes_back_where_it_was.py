@@ -219,6 +219,11 @@ async def test_the_retry_path_wakes_the_same_way(registry):
     Known-bad: have `_retrying` call `registry.ensure` directly again. The
     browser comes back correct and empty, and only a caller looking for its tabs
     would ever notice.
+
+    The failure raised here is the sentence a closed target gives, because
+    since 0.50.0 only a browser that is GONE is rebuilt - a page that refuses
+    keeps the browser it refused on. That distinction has its own file,
+    `test_only_a_dead_browser_is_rebuilt.py`.
     """
     store.save("default", {"main": {"seed": 9, "headless": True,
                                     "urls": ["http://a.test/"]}})
@@ -227,7 +232,7 @@ async def test_the_retry_path_wakes_the_same_way(registry):
     async def _once(session, *a, **k):
         if "first" not in seen:
             seen["first"] = True
-            raise RuntimeError("the browser died")
+            raise RuntimeError("Target page, context or browser has been closed")
         return json.dumps([p["url"] for p in await session.describe_pages()])
 
     got = await server._retrying(_once)

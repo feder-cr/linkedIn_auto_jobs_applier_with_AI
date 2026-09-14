@@ -158,14 +158,68 @@ async def test_the_saved_fields_are_the_launch_kwargs_and_not_a_second_vocabular
         "nothing: %r. The launch names are %r" % (invented, sorted(produced)))
 
     #: What is deliberately NOT saved, and why, so this test fails on a new
-    #: kwarg instead of silently ignoring it.
-    THIS_MACHINE = {"binary_path"}
-    unclassified = sorted(produced - set(server.WHO_A_BROWSER_IS) - THIS_MACHINE)
+    #: kwarg instead of silently ignoring it. Read from the one function that
+    #: decides what THIS launch imposes on every browser - the engine, and
+    #: whether the window is shown - rather than written out again here, where
+    #: a second list would drift from it.
+    THIS_LAUNCH = set(plan.launched_here({"STEALTHFOX_BINARY": "C:/an/engine"}))
+    assert THIS_LAUNCH == {"binary_path", "headless"}, THIS_LAUNCH
+    unclassified = sorted(produced - set(server.WHO_A_BROWSER_IS) - THIS_LAUNCH)
     assert not unclassified, (
         "the planner produces settings this file has never decided about: %r. "
         "Either they say who a browser is, and belong in WHO_A_BROWSER_IS, or "
-        "they describe this machine, and belong in THIS_MACHINE with a reason."
-        % unclassified)
+        "they describe this launch, and belong in plan.launched_here with a "
+        "reason." % unclassified)
+    assert not set(server.WHO_A_BROWSER_IS) & THIS_LAUNCH, (
+        "a launch setting is written into the identity file, so one launch "
+        "decides for every later one that reads it")
+
+
+async def test_whether_the_window_is_shown_is_this_launch_to_decide_not_the_file(
+        registry, monkeypatch):
+    """⛔ A LAUNCH FLAG WRITTEN INTO THE IDENTITY FILE OUTLIVES THE LAUNCH.
+
+    Until 0.50.0 `headless` was saved with the seed. Another server on the same
+    machine ran headed on purpose and, setting no session id, wrote the file
+    called `default`; the interface's default conversation read that same file
+    and reopened `main` on screen, uncloaked, at a launch that had asked for
+    nothing of the kind, while the helper it opened from the environment stayed
+    hidden. Measured 2026-09-14: the two windows at the same coordinates, one
+    with the cloak pref in its profile and one without.
+
+    Known-bad: `dict(plan.launched_here(), **config)` in `restore`, so the file
+    wins; or `headless` back in `WHO_A_BROWSER_IS`.
+    """
+    monkeypatch.delenv("STEALTHFOX_HEADLESS", raising=False)
+    store.save("default", {"main": {"seed": 4242, "headless": False}})
+
+    session = await server.ready()
+
+    assert session.kwargs.get("seed") == 4242, "it came back as somebody else"
+    assert session.kwargs.get("headless") is True, (
+        "a file saved by a headed run made this headless launch show a "
+        "window: %r" % session.kwargs)
+
+
+async def test_and_a_headed_launch_shows_a_browser_the_file_saved_hidden(
+        registry, monkeypatch):
+    """The same rule from the other side, or the test above passes on a
+    restore that simply forces headless."""
+    monkeypatch.setenv("STEALTHFOX_HEADLESS", "0")
+    store.save("default", {"main": {"seed": 4242, "headless": True}})
+
+    session = await server.ready()
+
+    assert session.kwargs.get("headless") is False, session.kwargs
+
+
+async def test_and_whether_the_window_is_shown_is_never_written_down(registry):
+    """Known-bad: put "headless" into WHO_A_BROWSER_IS."""
+    await server.browser_open(seed=4242)
+
+    saved = store.load("default")
+    assert "headless" not in saved["browsers"]["main"], (
+        "the session file carries a launch flag: %r" % saved["browsers"]["main"])
 
 
 async def test_the_helper_is_never_written_down(registry):

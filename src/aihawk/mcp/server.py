@@ -388,8 +388,11 @@ def restore() -> bool:
         # came back without the engine the person had named on the command
         # line: on a locally built one, with nothing to download, it could not
         # start at all. What the file says is who this browser is; what this
-        # build was asked to run it on is not the file's to say.
-        registry.declare(key, dict(config, **plan.engine_here()))
+        # build was asked to run it on is not the file's to say. Nor whether
+        # its window is shown: a file written by a headed run carries
+        # `headless: false` from before 0.50.0, and this process's own answer
+        # is written OVER it, not under it.
+        registry.declare(key, dict(config, **plan.launched_here()))
         if owed:
             _tabs_owed[key] = list(owed)
     return True
@@ -422,7 +425,16 @@ def focused() -> str:
 #: `binary_path` is deliberately absent. It is a path on this machine, and a
 #: browser reopened where that path means nothing must resolve an engine
 #: rather than insist on one that is not there.
-WHO_A_BROWSER_IS = ("seed", "proxy", "profile_dir", "headless")
+#:
+#: ⛔ AND `headless` IS ABSENT SINCE 0.50.0, FOR THE SAME REASON ONE STEP
+#: FURTHER: it is a property of the LAUNCH, not of the person. Saved, it made
+#: one headed run - another server on the same machine, run headed on purpose
+#: - decide for every later process that read the same file: the
+#: interface reopened `main` on screen, uncloaked, at a launch that had asked
+#: for nothing of the kind, and the helper beside it, built from the
+#: environment, stayed hidden. Measured 2026-09-14. What this process shows
+#: and what it runs on are both `plan.launched_here`, read at restore.
+WHO_A_BROWSER_IS = ("seed", "proxy", "profile_dir")
 
 
 def browsers_in() -> list:
@@ -661,11 +673,23 @@ def looking(browser_id=None):
 
 
 async def _retrying(fn, *args, browser_id=None, **kwargs):
-    """Run an action on one browser, and on failure rebuild it once and retry.
+    """Run an action on one browser; if the BROWSER is gone, rebuild it once
+    and retry.
 
     A browser that died between two calls is the ordinary case here, not an
     exotic one: the object is still intact, so the failure surfaces inside the
     action rather than when it was handed out.
+
+    ⛔ ONLY A BROWSER THAT IS GONE IS REBUILT, AND UNTIL 0.50.0 ANY FAILURE WAS.
+    The clause read `except Exception`, so a domain that did not resolve, a
+    page that timed out or a selector that matched nothing all counted as a
+    dead browser: the healthy one was closed, with its cookies and its pages,
+    a new one was started as the same person, the last page was reopened and
+    the action retried - to fail the same way and only then reach the caller.
+    Measured 2026-09-14 on the interface: `NS_ERROR_UNKNOWN_HOST` on the
+    second command cost the `main` browser, and a person watched the window
+    close and reopen for a typo. What "gone" means is decided in one place,
+    `registry.is_dead`, next to the check that decides it between calls.
 
     The rebuild is addressed too. Dropping and re-ensuring the DEFAULT key while
     the action was aimed at the other browser would kill a browser nobody asked
@@ -677,7 +701,10 @@ async def _retrying(fn, *args, browser_id=None, **kwargs):
     session = await ready(browser_id)
     try:
         return await fn(session, *args, **kwargs)
-    except Exception:
+    except Exception as failure:
+        if not registry.is_dead(at, failure):
+            # The page refused; the browser is fine. The refusal is the answer.
+            raise
         # ⛔ THE TABS ARE OWED AGAIN, or the recovery gives back half a browser.
         # `drop` keeps the identity on purpose - the replacement is the same
         # person - and until this line the pages were not part of "the same":

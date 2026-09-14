@@ -144,7 +144,7 @@ between what the browser says it is and where it appears to be.
 | `STEALTHFOX_SEED` | Integer seed for a deterministic fingerprint (same seed, same identity). A profile's own seed wins over this one. |
 | `STEALTHFOX_PROFILE_DIR` | A directory for a persistent profile, so logins survive across runs. |
 | `STEALTHFOX_BINARY` | Path to an engine binary you already have. It must be the build the packaged seal pins, or startup refuses. |
-| `STEALTHFOX_HEADLESS` | `0` to run headed; headless by default. |
+| `STEALTHFOX_HEADLESS` | `0` to run headed; headless by default. Decided by each launch: a saved session never records it, so a browser reopened by a headless server stays hidden even if it was last used headed. |
 | `STEALTHFOX_MCP_TRANSPORT` | `http` to serve over streamable HTTP instead of stdio. Default is stdio, which is what MCP clients expect. What else changes when you flip it, including the one thing that changes silently: [local or remote](local-vs-remote-mcp-server.md). |
 | `STEALTHFOX_MCP_HOST` | Bind address for the HTTP transport. Default `127.0.0.1`. |
 | `STEALTHFOX_MCP_PORT` | Port for the HTTP transport. Default `8766`. It used to be `8765`, the AIHawk interface's own default, so running both meant a bind error with nothing to explain it. |
@@ -174,6 +174,14 @@ none is. Sending a command opens it: `browser_navigate` is enough, and
 exit or the profile. Before 0.48.0 a read started a browser on your behalf,
 which meant a question could launch the engine and reach the network while the
 tool told your client it only read.
+
+**A page that refuses does not cost the browser.** From 0.50.0 a navigation
+that fails - a domain that does not resolve, a page that times out - is
+reported as it happened, on the browser you have, with its cookies and its
+pages intact. Only a browser that is actually gone is rebuilt as the same
+identity, and the command retried once. Before 0.50.0 any failure closed the
+browser and opened a new one to try again, which failed the same way a browser
+later.
 
 If the tools do not appear in your client, the fastest way to tell a broken
 registration from a broken server is to skip the client:
@@ -294,7 +302,7 @@ that was asked for.
 | `browser_snapshot` | `max_chars` | Title, url, and the interactive elements that are actually visible, each with a `selector` when one can reach it and `at: [x, y]`, its centre in viewport pixels. Not the accessibility tree: a single country `<select>` would contribute about two hundred `<option>` nodes and fill the cap before the form appears. |
 | `browser_read_html` | `mode`: `form` (default), `text`, `full` | The page's HTML reduced to what is worth reading: `form` keeps the interactive surface and the text explaining it, `text` the prose alone, `full` the structure with the noise removed. Not capped, on purpose: cutting markup in the middle leaves tags that mean nothing, so on a large page the answer is long. |
 | `browser_take_screenshot` | none | A screenshot of the page, as an image. |
-| `browser_watch` | none | The whole browser window as a person at the machine sees it: tab strip, address bar, page and the pointer, from a live capture the session keeps running on the active tab. |
+| `browser_watch` | none | The whole browser window as a person at the machine sees it: tab strip, address bar, page and the pointer, from a live capture the session keeps running on the active tab. A capture that stops delivering, as it does when a headed window is minimised, is started again on the next look; if the window cannot be captured the tool says so rather than answering an old picture. |
 
 The selectors a snapshot hands out are built to match exactly one element, and
 that is the reason to pass them verbatim rather than writing your own: measured

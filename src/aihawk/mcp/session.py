@@ -4,6 +4,7 @@ applies."""
 from __future__ import annotations
 
 import asyncio
+import time
 from typing import Any, Optional
 
 from invisible_playwright.async_api import InvisiblePlaywright
@@ -30,6 +31,9 @@ class StealthSession:
         # frame and the event that says one has arrived. Started lazily by
         # `watch_frame`, stopped with the tab.
         self._watch: dict[str, dict[str, Any]] = {}
+        # The clock a frame's age is read from. An attribute so a test can move
+        # time instead of sleeping through STALE_AFTER.
+        self._clock = time.monotonic
 
     def resume_numbering_after(self, highest: int) -> None:
         """Carry tab numbering forward from a session this one replaces.
@@ -223,6 +227,23 @@ class StealthSession:
     #: page asks often enough to collect them.
     WATCH_FPS = 25
 
+    #: A capture that has delivered nothing for this long is not a quiet page:
+    #: it is a capture that has stopped. The engine delivers at WATCH_FPS
+    #: whether or not anything on the page changed - measured 2026-09-14 on a
+    #: page that never moves: 93 frames in 4 s, the longest gap 78 ms - so two
+    #: seconds of silence is fifty missing frames.
+    #:
+    #: ⛔ A FRAME SERVED WITHOUT AN AGE IS A FROZEN PANE THAT LOOKS LIVE. The
+    #: engine's window capture can end for good on its own: the WebRTC capturer
+    #: it rests on reports a PERMANENT error the first time a headed window is
+    #: minimised, the capture timer is cancelled, and nothing tells the client.
+    #: This method then answered the last frame it held, forever, and the pane
+    #: showed a search page while the browser was two sites further on. Now a
+    #: frame older than this is a reason to stop and start the capture again;
+    #: a restart that stays silent is dropped with the reason, so the pane says
+    #: what is wrong instead of showing where the browser was.
+    STALE_AFTER = 2.0
+
     async def watch_frame(self, page_id: Optional[str] = None,
                           timeout: float = 3.0) -> bytes:
         """The latest JPEG frame of the WINDOW the active tab lives in.
@@ -236,16 +257,24 @@ class StealthSession:
 
         The capture is started on first use and kept running for the life of
         the tab, so the frame answered here is at most a twenty-fifth of a
-        second old. Stopped with the tab in `close_page`.
+        second old - and if it is older than STALE_AFTER the capture is
+        started again, because the engine does not say when one ends. Stopped
+        with the tab in `close_page`.
         """
         page = self.page(page_id)
         pid = next(k for k, v in self._pages.items() if v is page)
         state = self._watch.get(pid)
+        if (state is not None and state["latest"]
+                and self._clock() - state["at"] > self.STALE_AFTER):
+            await self._stop_watch(pid)
+            state = None
         if state is None:
-            state = {"latest": b"", "arrived": asyncio.Event()}
+            state = {"latest": b"", "arrived": asyncio.Event(),
+                     "at": self._clock()}
 
             def on_frame(frame: dict) -> None:
                 state["latest"] = frame["data"]
+                state["at"] = self._clock()
                 state["arrived"].set()
 
             try:
@@ -265,8 +294,15 @@ class StealthSession:
             try:
                 await asyncio.wait_for(state["arrived"].wait(), timeout)
             except asyncio.TimeoutError:
+                # Dropped, not kept: a capture that delivered nothing from the
+                # start may have died at birth - the engine ends one on a
+                # minimised window without a word - and keeping it would make
+                # every later look wait on a capture that cannot answer. The
+                # next look starts its own, which succeeds the moment the window
+                # can be captured again.
+                await self._stop_watch(pid)
                 raise RuntimeError(
-                    "the window capture is running but no frame arrived in "
+                    "the window capture started but no frame arrived in "
                     "%.0f s; a minimised window is captured as nothing" % timeout)
         return state["latest"]
 
