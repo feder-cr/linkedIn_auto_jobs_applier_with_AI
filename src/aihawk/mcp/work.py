@@ -322,10 +322,19 @@ class Work:
         """Which browsers are open, where each one is, and which one commands
         that name none go to. Starts nothing.
 
-        One row per open browser: `id`, `running`, `focused`, `url` (the page it
-        is on) and `urls` (every page it holds). `urls` is a list, or None for
-        "open and unreadable" - the two are different answers and the pane
-        draws them differently.
+        One row per open browser: `id`, `focused`, `url` (the page it is on)
+        and `urls` (every page it holds). `urls` is a list, or None for "open
+        and unreadable" - the two are different answers and the pane draws
+        them differently.
+
+        ⛔ THERE IS NO `running` FIELD, AND THERE WAS ONE UNTIL 0.54.0 SAYING
+        `true` ON EVERY ROW IT COULD EVER PRODUCE. It meant something while a
+        session could hold a browser that was DECLARED and not started; since
+        0.53.0 a browser is open or it is not here, and a listing that answers
+        a constant invites a reader to branch on it - which the page did, in
+        three places, filtering a list that could not contain the other case.
+        A field whose value is a property of the answer belongs in the
+        description, not in the rows.
         """
         here = DEFAULT_BROWSER_ID
         rows = []
@@ -347,7 +356,7 @@ class Work:
                 # pages cannot be read is not a browser with no pages, and a pane
                 # drawing "nothing open" over a live window would be a lie.
                 # `urls` is None for exactly this, and the pane draws it apart.
-                rows.append({"id": name, "running": True, "focused": name == here,
+                rows.append({"id": name, "focused": name == here,
                              "url": "", "urls": None})
                 continue
             urls = [p["url"] or "" for p in pages]
@@ -355,7 +364,7 @@ class Work:
             # its own makes those two different, and the page a command drives
             # is the newest live one.
             shown = next((p for p in pages if p["active"]), pages[0] if pages else None)
-            rows.append({"id": name, "running": True, "focused": name == here,
+            rows.append({"id": name, "focused": name == here,
                          "url": (shown["url"] or "") if shown else "", "urls": urls})
         return {
             "focus": here,

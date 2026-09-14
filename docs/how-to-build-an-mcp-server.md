@@ -45,7 +45,7 @@ print(total, "tokens on every turn")
 ```
 
 Run against this project's server on 2026-09-13 that prints **3192**, for 16
-tools and 8,953 characters of description. The schemas are a third of it, which
+tools and 8,978 characters of description. The schemas are a third of it, which
 is the part that surprises people who measured their docstrings and thought they
 were done.
 

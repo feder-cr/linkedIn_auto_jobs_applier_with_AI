@@ -299,14 +299,14 @@ function paintWhere(){
   const many = stage.grid > 1 && !stage.pinned && onStage().length > 1;
   if(many){ severalOpen(onStage().length); return; }
   const who = watched();
-  /* A browser that is not running has no address, and `fleet` already says
-     which ones are running, so this is the difference between a blank bar
-     and a stale one. It is NO LONGER A SAFETY RULE here, and it was: when
-     this asked the tab tool, that tool resolved its browser through `ready`
-     and so woke a stopped one - 800 MB and seven seconds for a chip nobody
-     clicked twice. Nothing is asked from here at all now. The safety version
-     of the rule still binds the frame pump and the cell builders, which ask
-     tools that DO wake. */
-  if(who && !stage.fleet.some(b => b.id === who && b.running)){ paintUrl(''); return; }
+  /* A browser the fleet does not hold has no address, which is the
+     difference between a blank bar and a stale one: the pinned pane survives
+     the browser it was pinned to, so `watched()` can name one that has been
+     closed or has gone. It asked `b.running` until 0.54.0, when that flag
+     went - the rows are the open browsers, so being in them IS the question.
+     It is no longer a SAFETY rule either: nothing is asked from here at all,
+     where asking the tab tool once woke a stopped browser for a chip nobody
+     clicked twice. */
+  if(who && !stage.fleet.some(b => b.id === who)){ paintUrl(''); return; }
   paintUrl(addressOf(stage.fleet, who));
 }

@@ -242,7 +242,7 @@ server serves exactly one session for its whole life.
 | `browser_open` | `browser`, `seed`, `proxy`, `profile`, all optional | Opens `main` or `support`, or reopens one that is already up with those settings, which is how you change identity without changing which browser you are talking to. `support` left without a `proxy` goes out through `main`'s exit. |
 | `browser_close` | `browser` optional | Closes `main` or `support` and frees what it held. Its page goes with it; the other browser is not touched. Who it was is kept: `browser_open` with no arguments brings the same person back. Close `support` when you are done with it. |
 | `browser_status` | `browser` optional | Who is browsing right now: the seed, the exit, the profile and the page it is on. Starts nothing; a browser that is not open, or gone, is answered with the sentence that says which. |
-| `browser_list` | none | Which of the two browsers are open, where each one is, and which one commands that name none go to. **Answers JSON**: `focus`, `limit`, `note`, and `browsers` with `id`, `running`, `focused`, the `url` it is on and the `urls` of every page it holds. Only open browsers are listed. Starts nothing, so asking is free. |
+| `browser_list` | none | Which of the two browsers are open, where each one is, and which one commands that name none go to. **Answers JSON**: `focus`, `limit`, `note`, and `browsers` with `id`, `focused`, the `url` it is on and the `urls` of every page it holds. Only open browsers are listed, so every row is one you can act on. Starts nothing, so asking is free. |
 
 `browser_open` is the first call of every session: nothing else opens a
 browser. With no arguments it is the person this session already was, or a

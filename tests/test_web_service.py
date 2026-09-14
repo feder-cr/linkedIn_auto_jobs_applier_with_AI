@@ -404,11 +404,12 @@ class Result:
         self.isError = isError
 
 
-#: What `browser_list` answers when there is something to look at. A double
-#: that can hand back a picture is a double with a browser running, so it has
-#: to say so: the views ask this first and draw nothing when the answer is no.
+#: What `browser_list` answers when there is something to look at. Every row
+#: it can contain is a browser that is OPEN - since 0.54.0 there is no
+#: `running` flag, because there was nothing it could ever say but true - so
+#: a double that hands back a picture is a double with a row.
 RUNNING = ('{"focus": "main", "limit": 2, '
-           '"browsers": [{"id": "main", "running": true, "focused": true, '
+           '"browsers": [{"id": "main", "focused": true, '
            '"url": "", "urls": []}]}')
 
 

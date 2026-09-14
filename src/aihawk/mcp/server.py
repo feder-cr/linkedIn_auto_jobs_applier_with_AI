@@ -318,9 +318,9 @@ async def browser_list() -> str:
     the commands that name none go to.
 
     Answers JSON: `focus`, `limit`, `note`, and `browsers` - each with `id`,
-    `running`, `focused`, `url` (the page it is on) and `urls` (every page it
-    holds, which is more than one only when a site opened one). Only open
-    browsers are listed.
+    `focused`, `url` (the page it is on) and `urls` (every page it holds,
+    which is more than one only when a site opened one). Only open browsers
+    are listed, so every row is one you can act on.
 
     Starts nothing: it reports what is open, so asking is free.
     """

@@ -234,23 +234,27 @@ def test_a_stopped_browser_is_never_asked_anything():
     """A stopped browser has no address, and the bar goes blank rather than
     keeping the last one.
 
-    ⛔ THIS USED TO BE A SAFETY RULE AND IS NOT ANY MORE, which is worth
-    saying because the reason it was written is the expensive one: asking a
-    declared-but-stopped browser for its tabs STARTED it - the server
-    resolved the id and the registry woke the engine - so clicking a stopped
-    browser's chip spent 800 MB and seven seconds nobody asked for, and then
-    kept asking every two seconds because the pin never cleared. `paintWhere`
-    asks nothing at all now: it reads the fleet the workspace already holds.
-    The safety version of the rule still binds the frame pump, the preview
-    row and both cell builders, which are tested beside this.
+    ⛔ WHAT THE GUARD ASKS CHANGED IN 0.54.0 AND WHY IT EXISTS DID NOT. It
+    used to read a `running` flag on the row; that flag was `true` on every
+    row the server could produce once a browser was either open or not
+    there, so it went, and the question became the one it always meant: is
+    this browser in the fleet at all.
+
+    ⛔ AND IT USED TO BE A SAFETY RULE, which is worth saying because the
+    reason it was written is the expensive one: asking a declared-but-stopped
+    browser for its tabs STARTED it - the server resolved the id and the
+    registry woke the engine - so clicking a stopped browser's chip spent 800
+    MB and seven seconds nobody asked for, and then kept asking every two
+    seconds because the pin never cleared. `paintWhere` asks nothing at all
+    now: it reads the fleet the workspace already holds.
 
     Known-bad: drop the guard from `paintWhere`.
     """
     where = CODE[CODE.index("function paintWhere"):]
     where = where[:where.index("\n}")]
-    assert "b.running" in where, (
-        "the address bar asks about a browser without checking it is running, "
-        "which starts it")
+    assert "stage.fleet.some(b => b.id === who)" in where, (
+        "the address bar names a browser the fleet does not hold, so it shows "
+        "the address of one that is closed or gone")
 
 def test_the_address_bar_says_where_the_browser_being_watched_is():
     """⛔ EXECUTED, NOT SCANNED, because the two ways to get this wrong both
@@ -286,10 +290,10 @@ def test_the_address_bar_says_where_the_browser_being_watched_is():
     body = body[:body.index(chr(10) + "}") + 2]
 
     rows = [
-        {"id": "main", "running": True, "focused": True,
+        {"id": "main", "focused": True,
          "url": "https://b.example/x",
          "urls": ["https://a.example/", "https://b.example/x"]},
-        {"id": "support", "running": True, "focused": False,
+        {"id": "support", "focused": False,
          "url": "https://mail.example/", "urls": ["https://mail.example/"]},
     ]
     js = body + "%sconst rows = %s;%s" % (chr(10), json.dumps(rows), chr(10)) + """
