@@ -41,7 +41,7 @@ def _mask(text: str) -> str:
 
 def summarise(name: str, args: dict | None) -> str:
     """One line for one call. `where` names the browser only when the CALL did:
-    a session holding eight browsers turns 25 steps into 25 identical lines
+    the helper beside the identity turns 25 steps into 25 identical lines
     otherwise, and inventing a default would say more than the call said.
     """
     args = args or {}

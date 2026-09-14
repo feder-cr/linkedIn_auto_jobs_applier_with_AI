@@ -7,6 +7,7 @@ from typing import Dict, List, Optional
 
 from .agent import Brain
 from .link import Link
+from .quiet import swallow
 from . import chats
 from .storage import DEFAULT_SESSION_ID
 
@@ -79,16 +80,13 @@ class ChatService:
         read and cannot continue, under a follow-up box that still says "and now
         sort them by price" will work.
 
-        A write that fails costs the saved conversation and nothing else: the
-        turn is already finished and answered, and losing it to a full disk
+        The turn is already finished and answered, and losing it to a full disk
         would be a strange way to report a full disk.
         """
-        try:
+        with swallow("a write that fails costs the saved conversation and nothing else"):
             chats.save_chat(self.session_id, self.name, self.history,
                             list(getattr(self._brain, "messages", []) or []),
                             self.usage)
-        except Exception:
-            pass
 
     def restore(self) -> bool:
         """Read this conversation back, if one was saved. Answers whether it was.

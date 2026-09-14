@@ -40,6 +40,7 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 from .runner import child_env
+from .quiet import swallow
 
 
 class Link:
@@ -86,10 +87,8 @@ class Link:
     async def close(self) -> None:
         for ctx in (self._sess_ctx, self._ctx):
             if ctx is not None:
-                try:
+                with swallow("a connection torn down on purpose is not a failure to report"):
                     await ctx.__aexit__(None, None, None)
-                except Exception:
-                    pass
         self._session = None
         self._sess_ctx = None
         self._ctx = None

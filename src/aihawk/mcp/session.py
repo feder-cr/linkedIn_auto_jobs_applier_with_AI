@@ -7,6 +7,8 @@ import asyncio
 import time
 from typing import Any, Optional
 
+from ..quiet import swallow
+
 from invisible_playwright.async_api import InvisiblePlaywright
 
 
@@ -151,14 +153,10 @@ class StealthSession:
             page = self._pages.get(pid)
             row = {"id": pid, "active": pid == self._active, "url": "", "title": ""}
             if page is not None:
-                try:
+                with swallow("a page that cannot say where it is answers blank"):
                     row["url"] = page.url
-                except Exception:
-                    pass
-                try:
+                with swallow("a page that cannot say its title answers blank"):
                     row["title"] = await page.title()
-                except Exception:
-                    pass
             out.append(row)
         return out
 
@@ -311,35 +309,29 @@ class StealthSession:
         page = self._pages.get(pid)
         if state is None or page is None:
             return
-        try:
+        with swallow("the tab may already be gone, and the engine stops the "
+                     "capture with the page either way"):
             await page.screencast.stop()
-        except Exception:
-            # The tab may already be gone; the engine stops the capture with
-            # the page either way.
-            pass
 
     async def close_page(self, page_id: Optional[str] = None) -> None:
         pid = page_id or self._active
         if pid is None or pid not in self._pages:
             return
         await self._stop_watch(pid)
-        try:
+        with swallow("a page already gone cannot be closed twice"):
             await self._pages[pid].close()
-        except Exception:
-            pass
-        finally:
-            self._pages.pop(pid, None)
-            if self._active == pid:
-                self._active = next(reversed(self._pages), None)
+        # Forgotten whether or not the close answered: a handle to a page that
+        # would not close is a handle nothing can use.
+        self._pages.pop(pid, None)
+        if self._active == pid:
+            self._active = next(reversed(self._pages), None)
 
     async def close(self) -> None:
         for pid in list(self._pages):
             await self.close_page(pid)
         if self._context is not None:
-            try:
+            with swallow("a context already gone cannot be closed twice"):
                 await self._context.close()
-            except Exception:
-                pass
             self._context = None
         if self._ipw is not None:
             try:

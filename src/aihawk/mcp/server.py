@@ -51,6 +51,7 @@ from mcp.server.fastmcp import FastMCP, Image
 from mcp.types import ToolAnnotations
 
 from . import NOTHING_RUNNING, __version__, actions, store
+from ..quiet import swallow
 from .work import DEFAULT_BROWSER_ID, REBUILT, Work
 # Reached by tests as `server.<name>`; the tools themselves no longer
 # read them, because the piece of work answers with them.
@@ -122,10 +123,8 @@ def _close_sessions_at_exit() -> None:
     and an await on an object from the finished one does not return: ten
     seconds, then the process is allowed to end.
     """
-    try:
+    with swallow("ten seconds, then the process is allowed to end"):
         asyncio.run(asyncio.wait_for(work.close_all(), 10))
-    except Exception:
-        pass
 
 
 

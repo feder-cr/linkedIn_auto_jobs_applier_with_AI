@@ -19,6 +19,7 @@ import re
 from typing import Any
 
 from . import clean
+from ..quiet import swallow
 
 # The character cap every text-returning action shares. Callers can lower it;
 # it exists so one enormous page cannot fill a model's context by itself.
@@ -526,14 +527,12 @@ async def select_option(session, selector: str, value: str) -> str:
     caller to know a hidden attribute is a tool that gets used wrong.
     """
     page = session.page()
-    try:
+    # Not an error yet: `value` may well have been a label. The second attempt
+    # is what decides, and its failure is the one worth reporting.
+    with swallow("the value may have been a label; the second attempt decides"):
         chosen = await page.select_option(selector, value=value, timeout=15_000)
         if chosen:
             return f"selected {selector} by value: {chosen}"
-    except Exception:
-        # Not an error yet: `value` may well have been a label. The second
-        # attempt is what decides, and its failure is the one worth reporting.
-        pass
     chosen = await page.select_option(selector, label=value, timeout=15_000)
     if not chosen:
         # Playwright answers with an empty list rather than raising when nothing
