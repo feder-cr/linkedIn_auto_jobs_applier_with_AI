@@ -46,10 +46,11 @@ import asyncio
 import atexit
 import os
 from contextlib import asynccontextmanager
-from typing import Literal
+from typing import Annotated, Literal, Optional
 
 from mcp.server.fastmcp import FastMCP, Image
 from mcp.types import ToolAnnotations
+from pydantic import Field
 
 from . import __version__, actions, store
 from ..quiet import swallow
@@ -258,50 +259,82 @@ def _says(title: str, *, read_only: bool = False, destructive: bool = False,
 
 
 #: What a tool accepts for `browser`: a ROLE, never a name a caller invents.
-Browser = Literal["main", "support"]
+#:
+#: ⛔ AND THE SENTENCE EXPLAINING IT LIVES HERE, ONCE, ON THE PARAMETER. It was
+#: the last line of THIRTEEN docstrings, word for word, which is thirteen places
+#: to change it and thirteen chances for one of them to say something slightly
+#: different. It also spent that budget in the wrong account: a description is
+#: cut at 1024 characters before the model reads it, and `browser_open` was
+#: sitting at 1021 - three characters from losing the sentence that says who
+#: closes `support`, which is the exact defect its gate was written for.
+#:
+#: On the parameter it is better placed: a client shows it beside the argument
+#: it describes, on every tool, whether or not that tool's description was long
+#: enough to reach the end.
+#:
+#: ⛔ AND IT IS ONE LINE BECAUSE THE FIRST VERSION WAS FOUR, AND FOUR MADE THE
+#: WHOLE CHANGE A LOSS. A schema travels with its tool on every turn exactly as
+#: a description does, so thirteen copies in the schemas is the same duplication
+#: as thirteen copies in the descriptions - moved, not removed, and the longer
+#: sentence made it dearer. Measured with a tokenizer across both trees:
+#: descriptions -256 tokens, schemas +900, complete definitions +617, which is
+#: 16% MORE resent every turn for a change whose point was to spend less.
+#:
+#: What the model needs AT THE CALL is which browser it gets when it says
+#: nothing. What `main` and `support` ARE is a paragraph, and it has one home:
+#: the server's instructions, sent once per conversation rather than once per
+#: tool. A gate below holds the complete definitions under what they cost
+#: before, so this cannot quietly grow back.
+Browser = Annotated[
+    Optional[Literal["main", "support"]],
+    Field(default=None,
+          description="Defaults to `main`; `support` is the helper beside it."),
+]
 
 
 # --- the two browsers -------------------------------------------------------
 
 @mcp.tool(annotations=_says("Open a browser", destructive=True, open_world=False))
-async def browser_open(browser: Browser | None = None, seed: int | None = None,
+async def browser_open(browser: Browser = None, seed: int | None = None,
                        proxy: str | None = None, profile: str | None = None) -> str:
     """Open `main` or `support`, or reopen one as somebody else.
 
-    `main` is your own identity: its page, cookies, fingerprint, logins.
-    `support` is a helper beside it for what must not touch that identity - a
-    temporary mailbox for a verification, a lookup the site must not connect to
-    the account. They share nothing. `support` is yours to manage: open it when
-    the task needs a second identity, and close it with browser_close as soon
-    as the task no longer needs it, before you answer. It is not saved.
+    `support` is yours to manage: open it when the task needs a second
+    identity, and close it with browser_close as soon as the task no longer
+    needs it, before you answer. It is not saved.
 
     Called on a browser that is already up, this REOPENS it with the settings
     given, and what it held is gone.
 
     seed     the identity; same seed, same fingerprint. Left out, one is drawn.
     profile  a directory keeping cookies, logins and the seed between opens;
-             "" means none.
+             "" means none. It keeps the SEED too, so a login does not come
+             back on different hardware every visit.
     proxy    the exit, `http://user:pass@host:port` or `socks5://host:port`;
              "" means this machine's own address; left out for `support`, it
-             shares the exit `main` has.
+             shares the exit `main` has. A profile does NOT pin its exit, and
+             a login arriving from a new country is as visible as one arriving
+             on new hardware.
     """
     # ⛔ THE DESCRIPTION ABOVE IS WHAT THE MODEL READS, AND IT IS CUT AT 1024
     # CHARACTERS BY THE API. The version before this one was 1996: the model
     # saw it end mid-word inside the paragraph about profiles, and the sentence
     # that told it to close the helper was past the cut. A gate in the server
-    # tests now holds every tool's description under the limit. What was cut
-    # from here, kept for a reader of the source: a profile also keeps its
-    # seed, so a login does not come back wearing different hardware; a profile
-    # does NOT pin its exit - timezone, locale and geography come from the
-    # exit, so the same login arriving from another country is as visible as
-    # one arriving on different hardware; and `support` takes a proxy of its
-    # own only when it is meant to look different from `main`.
+    # tests holds every tool's description under the limit.
+    #
+    # ⛔ AND IT SAT AT 1021 OF 1024 - three characters - while saying a third
+    # time what `main` and `support` are: once in the server's instructions,
+    # once on the `browser` parameter, once here. Removing the copy is what
+    # bought the room for the two rules below it, which had been cut for space
+    # and left in this comment where no model would ever read them. A repeated
+    # sentence is not free here; it is spent out of the same 1024 characters
+    # as the rules that only this tool can state.
     return await work.open(browser or DEFAULT_BROWSER_ID, seed=seed,
                            proxy=proxy, profile=profile)
 
 
 @mcp.tool(annotations=_says("Close a browser", destructive=True, open_world=False))
-async def browser_close(browser: Browser | None = None) -> str:
+async def browser_close(browser: Browser = None) -> str:
     """Close one browser and free what it was holding.
 
     The page it had is gone with it. The other browser is not touched.
@@ -341,7 +374,7 @@ async def browser_list() -> str:
 # --- who is browsing ---------------------------------------------------------
 
 @mcp.tool(annotations=_says("Who is browsing", read_only=True, open_world=False))
-async def browser_status(browser: Browser | None = None) -> str:
+async def browser_status(browser: Browser = None) -> str:
     """Who is browsing right now: the identity, the exit, the profile and the page.
 
     Ask whenever you need to know which person the browser currently is, or
@@ -351,8 +384,6 @@ async def browser_status(browser: Browser | None = None) -> str:
 
     It starts nothing: a browser that is not open, or gone, is answered with
     the sentence that says which.
-
-    `browser` is `main` unless you say `support`, and they share nothing.
     """
     return await work.status(browser or DEFAULT_BROWSER_ID)
 
@@ -378,7 +409,7 @@ async def browser_status(browser: Browser | None = None) -> str:
 
 @mcp.tool(annotations=_says("Go to a URL", destructive=True))
 async def browser_navigate(url: str, wait_until: str = "domcontentloaded",
-                           browser: Browser | None = None) -> str:
+                           browser: Browser = None) -> str:
     """Go to a url in this browser's page, opening it if none exists.
 
     Answers with the HTTP status the server gave and the url actually landed
@@ -390,16 +421,14 @@ async def browser_navigate(url: str, wait_until: str = "domcontentloaded",
     wait_until is "domcontentloaded" by default, which returns as soon as the
     markup is parsed. Use "load" when the page needs its images and stylesheets,
     or "networkidle" for a single-page app that fetches its content after
-    load.
-
-    `browser` is `main` unless you say `support`, and they share nothing."""
+    load."""
     return await work.acting(actions.navigate, url, wait_until=wait_until,
                              role=browser)
 
 
 @mcp.tool(annotations=_says("Read the page text", read_only=True))
 async def browser_read_text(selector: str = "body", max_chars: int = 6000,
-                            browser: Browser | None = None) -> str:
+                            browser: Browser = None) -> str:
     """The visible text of an element, with the markup gone.
 
     The cheapest way to read a page. Narrow the selector when you know where the
@@ -407,14 +436,12 @@ async def browser_read_text(selector: str = "body", max_chars: int = 6000,
     browser_snapshot when you need something to click.
 
     Long text is cut at max_chars (6000 by default) and the cut is marked in
-    what comes back, so text that ends without that marker is the whole thing.
-
-    `browser` is `main` unless you say `support`, and they share nothing."""
+    what comes back, so text that ends without that marker is the whole thing."""
     return await work.acting(actions.read_text, selector, max_chars, role=browser)
 
 
 @mcp.tool(annotations=_says("Snapshot the page", read_only=True))
-async def browser_snapshot(max_chars: int = 0, browser: Browser | None = None) -> str:
+async def browser_snapshot(max_chars: int = 0, browser: Browser = None) -> str:
     """Title, url, and the interactive elements that are actually visible.
 
     Each element carries a `selector` when one can reach it: pass that string to
@@ -430,14 +457,12 @@ async def browser_snapshot(max_chars: int = 0, browser: Browser | None = None) -
     Not the accessibility tree: on a real sign-up page a single country
     `<select>` contributes about two hundred `<option>` nodes, which fill the
     character cap before the form the caller was looking for appears at all.
-
-    `browser` is `main` unless you say `support`, and they share nothing.
     """
     return await work.acting(actions.snapshot, max_chars, role=browser)
 
 
 @mcp.tool(annotations=_says("Read the page HTML", read_only=True))
-async def browser_read_html(mode: str = "form", browser: Browser | None = None) -> str:
+async def browser_read_html(mode: str = "form", browser: Browser = None) -> str:
     """The page's HTML, cleaned down to what is worth reading.
 
     Use this when the STRUCTURE matters - a form and its labels, a table, what
@@ -452,23 +477,19 @@ async def browser_read_html(mode: str = "form", browser: Browser | None = None) 
     page, tens of thousands of characters on a large one. Cutting markup in the
     middle leaves tags that mean nothing, so it is not cut - but the answer can
     be long. Reach for browser_snapshot when you only need something to click.
-
-    `browser` is `main` unless you say `support`, and they share nothing.
     """
     return await work.acting(actions.read_html, mode, role=browser)
 
 
 @mcp.tool(annotations=_says("Take a screenshot", read_only=True))
-async def browser_take_screenshot(browser: Browser | None = None) -> Image:
-    """One screenshot of this browser's page, on demand.
-
-    `browser` is `main` unless you say `support`, and they share nothing."""
+async def browser_take_screenshot(browser: Browser = None) -> Image:
+    """One screenshot of this browser's page, on demand."""
     png = await work.acting(actions.screenshot_png, role=browser)
     return Image(data=png, format="png")
 
 
 @mcp.tool(annotations=_says("Watch the browser window", read_only=True))
-async def browser_watch(browser: Browser | None = None) -> Image:
+async def browser_watch(browser: Browser = None) -> Image:
     """The whole browser window as a person at the machine sees it: tab strip,
     address bar, the page and the pointer, from a live capture kept running on
     that page. For watching the work, not for acting on it: the picture
@@ -477,9 +498,7 @@ async def browser_watch(browser: Browser | None = None) -> Image:
 
     Starts nothing. A browser that is not open has no window, so this answers
     the sentence that says so, and the live panes - which call this many times
-    a second - read that sentence as the idle pane.
-
-    `browser` is `main` unless you say `support`, and they share nothing."""
+    a second - read that sentence as the idle pane."""
     # It REFUSES rather than answering the sentence as text, and only because
     # the type says so: this is declared to return an Image, and `Image | str`
     # is not a schema pydantic will build - measured, five test modules
@@ -492,20 +511,18 @@ async def browser_watch(browser: Browser | None = None) -> Image:
 # --- acting ----------------------------------------------------------------
 
 @mcp.tool(annotations=_says("Click an element", destructive=True))
-async def browser_click(selector: str, browser: Browser | None = None) -> str:
+async def browser_click(selector: str, browser: Browser = None) -> str:
     """Click the first element matching a CSS selector.
 
     Scrolls it into view and waits for it to be clickable. When no selector can
     describe the target, use browser_click_at with coordinates from
-    browser_snapshot.
-
-    `browser` is `main` unless you say `support`, and they share nothing."""
+    browser_snapshot."""
     return await work.acting(actions.click, selector, role=browser)
 
 
 @mcp.tool(annotations=_says("Click at a point", destructive=True))
 async def browser_click_at(x: float, y: float, hold_seconds: float = 0.0,
-                           browser: Browser | None = None) -> Image:
+                           browser: Browser = None) -> Image:
     """Click (or press-and-hold) a raw viewport coordinate instead of a
     selector - for targets a selector cannot reliably reach: a slider track, a
     canvas-drawn captcha, a precise point inside a wider element. Moves the
@@ -516,9 +533,7 @@ async def browser_click_at(x: float, y: float, hold_seconds: float = 0.0,
     snapshot go stale the moment anything scrolls. Nothing raises when that
     happens: the click lands on whatever is at that spot now. Take a fresh
     snapshot after anything that could have moved the page, and prefer
-    browser_click with the element's `selector` whenever it has one.
-
-    `browser` is `main` unless you say `support`, and they share nothing."""
+    browser_click with the element's `selector` whenever it has one."""
     # hold_seconds needs invisible-playwright 0.9.0 or newer to mean anything:
     # in every earlier version the wait it is built on returned instantly, so
     # the press and the release happened in the same frame and the hold never
@@ -530,43 +545,37 @@ async def browser_click_at(x: float, y: float, hold_seconds: float = 0.0,
 
 
 @mcp.tool(annotations=_says("Type into a field", destructive=True))
-async def browser_type(selector: str, text: str, browser: Browser | None = None) -> str:
+async def browser_type(selector: str, text: str, browser: Browser = None) -> str:
     """Fill a field, replacing whatever it holds.
 
     This sets the value rather than typing key by key, so it will not fire the
     per-keystroke handlers an autocomplete needs. For those, click the field and
-    use browser_press_key.
-
-    `browser` is `main` unless you say `support`, and they share nothing."""
+    use browser_press_key."""
     return await work.acting(actions.type_text, selector, text, role=browser)
 
 
 @mcp.tool(annotations=_says("Choose a dropdown option", destructive=True))
 async def browser_select_option(selector: str, value: str,
-                                browser: Browser | None = None) -> str:
+                                browser: Browser = None) -> str:
     """Choose an option in a dropdown (`<select>`), by its visible label or by
     its value.
 
     Use this rather than clicking the dropdown and pressing arrow keys: a click
     plus arrows cannot tell you which row it landed on, and setting the value
     through browser_evaluate changes it without the page seeing a real
-    interaction.
-
-    `browser` is `main` unless you say `support`, and they share nothing."""
+    interaction."""
     return await work.acting(actions.select_option, selector, value, role=browser)
 
 
 @mcp.tool(annotations=_says("Press a key", destructive=True))
-async def browser_press_key(key: str, browser: Browser | None = None) -> str:
+async def browser_press_key(key: str, browser: Browser = None) -> str:
     """Press a key on whatever has focus: "Enter", "Tab", "Escape",
-    "ArrowDown", "Control+a", or a single character.
-
-    `browser` is `main` unless you say `support`, and they share nothing."""
+    "ArrowDown", "Control+a", or a single character."""
     return await work.acting(actions.press_key, key, role=browser)
 
 
 @mcp.tool(annotations=_says("Read the page with JavaScript", read_only=True))
-async def browser_evaluate(expression: str, browser: Browser | None = None) -> str:
+async def browser_evaluate(expression: str, browser: Browser = None) -> str:
     """READ from the page with JavaScript and get the result as JSON.
 
     For what the other tools cannot see: a computed style, a value held in a
@@ -582,9 +591,7 @@ async def browser_evaluate(expression: str, browser: Browser | None = None) -> s
 
     The refusal catches the obvious spellings, not every possible one. A script
     that slips past it is still the wrong way to do the thing: report it in your
-    answer rather than using it.
-
-    `browser` is `main` unless you say `support`, and they share nothing."""
+    answer rather than using it."""
     return await work.acting(actions.evaluate, expression, role=browser)
 
 

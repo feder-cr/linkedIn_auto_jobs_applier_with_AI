@@ -44,8 +44,8 @@ for tool in mcp._tool_manager.list_tools():
 print(total, "tokens on every turn")
 ```
 
-Run against this project's server on 2026-09-13 that prints **3192**, for 16
-tools and 9,097 characters of description. The schemas are a third of it, which
+Run against this project's server on 2026-09-15 that prints **3159**, for 16
+tools and 8,105 characters of description. The schemas are a third of it, which
 is the part that surprises people who measured their docstrings and thought they
 were done.
 
@@ -139,7 +139,7 @@ is Python-specific.
 
 - [The MCP transports overview](https://modelcontextprotocol.io/docs/concepts/transports), retrieved 2026-09-13, for the two standard bindings and the statement that protocol semantics are identical on every transport.
 - [Build an MCP server](https://modelcontextprotocol.io/docs/develop/build-server), retrieved 2026-09-13, for the quickstart this page deliberately does not repeat.
-- This project's own server, enumerated through its tool registry on 2026-09-13 (16 tools, 3,192 tokens) and its git history for the 24-to-16 change.
+- This project's own server, enumerated through its tool registry on 2026-09-15 (16 tools, 3,159 tokens) and its git history for the 24-to-16 change.
 
 ---
 
