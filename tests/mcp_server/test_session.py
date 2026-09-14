@@ -110,25 +110,30 @@ async def test_attach_persistent_context_used_directly():
 
 
 @pytest.mark.asyncio
-async def test_alive_means_started_and_still_connected():
-    """The two ways a session stops being usable, and they are different: one
-    that never finished starting has no context; one whose browser died under
-    it still has every object and answers `is_connected` false.
+async def test_usable_means_started_and_not_closed_here():
+    """The two failures a LOCAL question can see: a session that never
+    finished starting has no context, and one closed here has none either.
+
+    ⛔ WHAT IT CANNOT SEE IS THE ONE PEOPLE EXPECT, and the engine test
+    beside this file measured it: a browser whose process was killed goes on
+    answering `is_connected()` true for seconds. Only a round trip notices,
+    which is why `Work` translates a closed target as well.
 
     Known-bad: answer `True` whenever `_context` is set.
     """
     s = StealthSession()
-    assert s.is_alive() is False, "a session that never started is alive"
+    assert s.is_usable() is False, "a session that never started is usable"
 
     await s._attach(_FakeBrowser(connected=True))
-    assert s.is_alive() is True
+    assert s.is_usable() is True
 
     s._browser._connected = False
-    assert s.is_alive() is False, "a browser that died under the session is alive"
+    assert s.is_usable() is False, (
+        "a browser that says it is disconnected is still handed out")
 
     persistent = StealthSession()
     await persistent._attach(_FakePersistentContext())
-    assert persistent.is_alive() is True, "a persistent context has no browser to ask"
+    assert persistent.is_usable() is True, "a persistent context has no browser to ask"
 
     await s.close()
-    assert s.is_alive() is False
+    assert s.is_usable() is False

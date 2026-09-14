@@ -25,6 +25,12 @@ class _Recording:
         self.kwargs = kwargs
         self.closed = False
         self.alive = True
+        #: ⛔ THE ENGINE IS GONE AND THE OBJECT DOES NOT KNOW, which is what a
+        #: killed Firefox really looks like: measured against firefox-30 in
+        #: `test_a_gone_browser_is_said.py`, `is_connected()` answers true for
+        #: at least six seconds and `page.url` answers from cache. So this
+        #: stays `usable` and only the ROUND TRIP raises, exactly as there.
+        self.dead = False
         self.urls: list = []
 
     async def start(self):
@@ -33,7 +39,7 @@ class _Recording:
     async def close(self):
         self.closed = True
 
-    def is_alive(self):
+    def is_usable(self):
         return self.alive and not self.closed
 
     def pages(self):
@@ -52,6 +58,8 @@ class _Recording:
         return list(self.urls)
 
     async def describe_pages(self):
+        if self.dead:
+            raise TargetClosedError("Target page, context or browser has been closed")
         return [{"url": u, "title": "", "active": i == len(self.urls) - 1}
                 for i, u in enumerate(self.urls)]
 
@@ -376,3 +384,38 @@ async def test_close_all_closes_both_and_forgets_neither_person(work):
 
     assert all(s.closed for s in both) and work.roles() == []
     assert store.load("default")["browsers"]["main"]["seed"] == 4242
+
+
+async def test_a_browser_whose_engine_is_gone_is_dropped_by_the_listing_and_said_by_the_status(work):
+    """⛔ THE ROUND TRIP IS WHAT NOTICES, AND BOTH READERS HAVE TO ACT ON IT.
+    Nothing local can see a process that has gone - the stand-in above stays
+    `usable` for that reason, because a real one does - so the listing and the
+    status meet a browser that answers everything from memory until the moment
+    they ask it something. What they must not do is answer anyway: a row that
+    says `running` and a status that names the person are both the picture of
+    a browser that is not there.
+
+    Known-bad, two: have the listing keep the row; have the status report the
+    identity it holds in `_launched`.
+    """
+    import json
+
+    await server.browser_open(seed=4242)
+    await server.browser_navigate("https://example.com/")
+    await server.browser_open(browser="support")
+    _session(work).dead = True
+
+    listed = json.loads(await server.browser_list())
+
+    assert [r["id"] for r in listed["browsers"]] == ["support"], (
+        "a browser whose engine is gone is still listed as open: %s" % listed)
+    assert work.roles() == ["support"], "the dead browser is still held"
+
+    # And it comes back as the same person, which is what the sentence promises.
+    await server.browser_open()
+    assert _session(work).kwargs["seed"] == 4242
+    _session(work).dead = True
+    with pytest.raises(RuntimeError) as told:
+        await server.browser_status()
+    assert str(told.value) == GONE % "main", (
+        "the status answered over a browser that is not there: %s" % told.value)

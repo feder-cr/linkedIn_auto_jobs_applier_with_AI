@@ -263,21 +263,38 @@ class Work:
 
     # --- act ------------------------------------------------------------------
 
+    def gone(self, role: str) -> RuntimeError:
+        """Forget this browser, and answer the sentence that says it is gone.
+
+        ⛔ ONE PLACE, BECAUSE IT IS ONE FACT WITH TWO HALVES: the model is
+        told what to call, and the dead object is dropped so the next
+        `browser_open` starts clean rather than handing the same corpse out
+        again. Three callers notice a browser is gone and none of them may
+        do only half of this: `session` locally, `acting` when an action
+        raises a closed target, and `status` when the question does.
+        """
+        self._open.pop(role, None)
+        self._launched.pop(role, None)
+        return RuntimeError(GONE % role)
+
     def session(self, role: str) -> StealthSession:
-        """This browser, open and alive, or the one sentence that says why not.
+        """This browser, open and worth handing out, or the one sentence that
+        says why not.
 
         ⛔ NEVER STARTS ONE AND NEVER BRINGS ONE BACK. A browser that is not
-        open is `NOT_OPEN`; one that was open and died is `GONE`, and is
-        forgotten here so that the next `browser_open` starts clean. Both
+        open is `NOT_OPEN`; one that was open and is unusable is `GONE`. Both
         sentences name `browser_open`, which is the model's next call.
+
+        ⛔ AND WHAT IT CAN SEE IS LOCAL: `is_usable` asks the object, not the
+        browser, and a killed engine answers "connected" for seconds. The
+        round trip is what notices that, which is why the callers below
+        translate a closed target as well rather than trusting this.
         """
         session = self._open.get(role)
         if session is None:
             raise RuntimeError(NOT_OPEN % role)
-        if not session.is_alive():
-            self._open.pop(role, None)
-            self._launched.pop(role, None)
-            raise RuntimeError(GONE % role)
+        if not session.is_usable():
+            raise self.gone(role)
         return session
 
     async def acting(self, fn: Callable[..., Awaitable], *args,
@@ -297,9 +314,7 @@ class Work:
         try:
             return await fn(session, *args, **kwargs)
         except TargetClosedError:
-            self._open.pop(at, None)
-            self._launched.pop(at, None)
-            raise RuntimeError(GONE % at)
+            raise self.gone(at) from None
 
     # --- look -------------------------------------------------------------------
 
@@ -316,23 +331,32 @@ class Work:
         rows = []
         for name in self.roles():
             session = self._open[name]
-            urls: list | None = []
-            url = ""
             try:
                 pages = await session.describe_pages()
-                urls = [p["url"] or "" for p in pages]
-                # The ACTIVE page rather than the first: a site that opens one
-                # of its own makes those two different, and the page a command
-                # drives is the newest live one.
-                shown = next((p for p in pages if p["active"]), pages[0] if pages else None)
-                url = (shown["url"] or "") if shown else ""
+            except TargetClosedError:
+                # ⛔ NOT A ROW THAT CANNOT BE READ: A BROWSER THAT IS NOT THERE.
+                # Everything this answers is open by definition, so a browser
+                # whose engine has gone is dropped and forgotten rather than
+                # listed as running - the live panes draw this answer, and a
+                # pane over a browser that no longer exists is the frozen
+                # picture of [B202], one layer up.
+                self.gone(name)
+                continue
             except Exception:
                 # Readable as a state rather than as an absence: a browser whose
                 # pages cannot be read is not a browser with no pages, and a pane
                 # drawing "nothing open" over a live window would be a lie.
-                urls = None
+                # `urls` is None for exactly this, and the pane draws it apart.
+                rows.append({"id": name, "running": True, "focused": name == here,
+                             "url": "", "urls": None})
+                continue
+            urls = [p["url"] or "" for p in pages]
+            # The ACTIVE page rather than the first: a site that opens one of
+            # its own makes those two different, and the page a command drives
+            # is the newest live one.
+            shown = next((p for p in pages if p["active"]), pages[0] if pages else None)
             rows.append({"id": name, "running": True, "focused": name == here,
-                         "url": url, "urls": urls})
+                         "url": (shown["url"] or "") if shown else "", "urls": urls})
         return {
             "focus": here,
             "limit": MAX_BROWSERS_PER_SESSION,
@@ -346,16 +370,27 @@ class Work:
         """Who this browser is - identity, exit, profile - and the page it is
         on. Starts nothing; not open, or gone, is the sentence."""
         session = self.session(role)
+        launched = self._launched[role]
         try:
             rows = await session.describe_pages()
-            here = next((r for r in rows if r["active"]), rows[0] if rows else None)
-            where = (here["url"] or "blank") if here else "no page open yet"
-            # ⛔ COUNTED, AND NOT BLAMED ON ANYBODY. A caller cannot make,
-            # choose or close a page, so the honest report of a second one is
-            # that it is there - not who opened it: a confident wrong cause is
-            # the defect this project removed from `navigate`.
-            if len(rows) > 1:
-                where += " (%d other pages are open in this browser)" % (len(rows) - 1)
+        except TargetClosedError:
+            # ⛔ THE QUESTION IS WHAT NOTICED, and it must not answer anyway.
+            # The identity below comes from the launch kwargs, which outlive
+            # the browser, and the page from a url a dead page still holds in
+            # memory - so without this the status of a browser whose engine had
+            # been killed read exactly like the status of a healthy one.
+            # Measured 2026-09-14 against firefox-30.
+            raise self.gone(role) from None
         except Exception:
-            where = "the page is unreadable"
-        return plan.describe(self._launched[role]) + " page: %s." % where
+            # Any other failure is the page being difficult, not the browser
+            # being gone: the identity is still worth reporting.
+            return plan.describe(launched) + " page: the page is unreadable."
+        here = next((r for r in rows if r["active"]), rows[0] if rows else None)
+        where = (here["url"] or "blank") if here else "no page open yet"
+        # ⛔ COUNTED, AND NOT BLAMED ON ANYBODY. A caller cannot make, choose
+        # or close a page, so the honest report of a second one is that it is
+        # there - not who opened it: a confident wrong cause is the defect this
+        # project removed from `navigate`.
+        if len(rows) > 1:
+            where += " (%d other pages are open in this browser)" % (len(rows) - 1)
+        return plan.describe(launched) + " page: %s." % where
