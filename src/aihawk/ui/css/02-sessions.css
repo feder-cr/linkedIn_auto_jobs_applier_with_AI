@@ -262,6 +262,17 @@
 .chat:hover .x, .chat:focus-within .x, .chat .x:focus-visible{ opacity:1 }
 .chat .x:hover{ background:var(--line-2); color:var(--fg) }
 .chat .x:active{ background:var(--line-3) }
+/* An armed control is wider than the letter it was, and it stays on screen
+   while it is armed rather than waiting for a hover that has already gone. */
+.chat .x[data-armed]{ width:auto; padding:0 var(--s2); opacity:1;
+                      color:var(--err); background:var(--err-fill);
+                      font-size:var(--t-label) }
+/* The name, being edited in the row it lives in. It takes the row's own type
+   and box so nothing jumps when the button becomes an input. */
+.chat .nmedit{ flex:1; min-width:0; font:inherit; color:var(--fg);
+               background:var(--well); border:1px solid var(--accent);
+               border-radius:var(--r-sm); padding:2px var(--s2) }
+.chat .nmedit:focus{ outline:none }
 
 
 /* ⛔ A PERCENTAGE ALONE GIVES THE SURPLUS TO THE WRONG PANE. The conversation

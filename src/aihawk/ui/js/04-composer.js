@@ -282,19 +282,52 @@ async function ask(path, body, whatFailed){
   }
 }
 
+/* ⛔ NO NATIVE DIALOG, ANYWHERE ON THIS PAGE, AND THE REASON IS THE PRODUCT'S
+   OWN PROMISE. `confirm` and `prompt` block the thread they are called on:
+   while one is up the frame pump stops, the transcript stops drawing, the step
+   clock freezes - and the agent keeps working, server-side, the whole time. On
+   a product whose claim is that you can watch it work, the two controls in the
+   sessions panel and the one in the header stopped the watching. Walk away
+   from an open dialog and the page is frozen for as long as you are gone.
+
+   A second press instead. It is the pattern for a destructive control in a
+   list, it needs no modal to build, and it leaves the page alive. The button
+   says what the second press will do, so the sentence a `confirm` carried is
+   not lost - it moves onto the control itself, where it is read by the eye and
+   by a screen reader from the label.
+
+   Disarmed after five seconds, because a control left armed is a control that
+   will be pressed by somebody who has forgotten why it looks like that. */
+const arming = new WeakMap();
+function dress(btn, how, armed){
+  btn.textContent = how[0];
+  btn.title = how[1];
+  btn.setAttribute('aria-label', how[1]);
+  if(armed) btn.dataset.armed = '1'; else delete btn.dataset.armed;
+}
+function confirms(btn, resting, asking){
+  const waiting = arming.get(btn);
+  if(waiting){ clearTimeout(waiting); arming.delete(btn);
+               dress(btn, resting, false); return true; }
+  dress(btn, asking, true);
+  arming.set(btn, setTimeout(() => { arming.delete(btn); dress(btn, resting, false); }, 5000));
+  return false;
+}
+
 /* ⛔ THE ONLY UNGUARDED DESTRUCTIVE CONTROL, AND IT SAT IN THE PERMANENT
    HEADER. Deleting a whole session - rarer, and behind a closed panel - asked
-   first and named what went with it; clearing the transcript, which also
-   makes the model forget everything it has been told, went on one click. The
-   guard was on the wrong control. Named on the message, and named again on
-   the button. */
+   first and named what went with it; clearing the transcript, which also makes
+   the model forget everything it has been told, went on one click. The guard
+   was on the wrong control. */
 fresh.onclick = () => {
   if(busyNow){
     orphan('said', 'Clear is off while the agent is working: stop the run '
            + 'first, then clear.');
     return;
   }
-  if(!confirm('Clear this conversation? The agent forgets everything you have told it. Its browsers stay open.')) return;
+  if(!confirms(fresh, ['Clear', 'Clear this conversation'],
+               ['Clear?', 'Press again to clear. The agent forgets everything '
+                        + 'you have told it. Its browsers stay open.'])) return;
   ask('/chat/fresh', undefined, 'Could not clear this conversation');
 };
 

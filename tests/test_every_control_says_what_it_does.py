@@ -98,6 +98,9 @@ def test_clear_explains_itself_instead_of_going_dead():
     clear anyway.
     """
     paint = whole("function paint(){", chr(10) + "}")
+    twostep = (whole("const arming = new WeakMap();", ";" + chr(10))
+               + whole("function dress(btn, how, armed){", chr(10) + "}") + chr(10)
+               + whole("function confirms(btn, resting, asking){", chr(10) + "}"))
     click = whole("fresh.onclick = () => {", chr(10) + "};")
     harness = [
         "const what = {textContent:''};",
@@ -105,26 +108,33 @@ def test_clear_explains_itself_instead_of_going_dead():
         "globalThis.i = {value:'', placeholder:''};",
         "globalThis.go = {disabled:false, dataset:{}, setAttribute(){}};",
         "globalThis.halt = {hidden:true};",
-        "globalThis.fresh = {attrs:{}, setAttribute(k, v){ this.attrs[k] = v; }};",
+        "globalThis.fresh = {attrs:{}, dataset:{}, textContent:'Clear', title:'',",
+        "                    setAttribute(k, v){ this.attrs[k] = v; }};",
+        "globalThis.setTimeout = () => 1; globalThis.clearTimeout = () => {};",
         "let said = [], asked = [];",
         "globalThis.orphan = (k, t) => said.push(t);",
         "globalThis.ask = (path) => { asked.push(path); };",
-        "globalThis.confirm = () => true;",
         "globalThis.queued = null;",
         "globalThis.busyNow = true; paint();",
         "const look = fresh.attrs['aria-disabled'];",
         "fresh.onclick();",
-        "const whileWorking = {said: said.slice(), asked: asked.slice()};",
+        "const whileWorking = {said: said.slice(), asked: asked.slice(),",
+        "                      armed: !!fresh.dataset.armed};",
         "said = []; asked = [];",
-        "globalThis.busyNow = false; paint(); fresh.onclick();",
-        "process.stdout.write(JSON.stringify({look, whileWorking,",
-        "  idle: {said, asked, disabled: !!fresh.disabled}}));",
+        "globalThis.busyNow = false; paint();",
+        "fresh.onclick();",
+        "const once = {asked: asked.slice(), word: fresh.textContent,",
+        "              armed: !!fresh.dataset.armed, why: fresh.title};",
+        "fresh.onclick();",
+        "process.stdout.write(JSON.stringify({look, whileWorking, once,",
+        "  twice: {asked, word: fresh.textContent, armed: !!fresh.dataset.armed,",
+        "          disabled: !!fresh.disabled}}));",
     ]
     #: the stubs first, then the code that binds to them, then the actions:
     #: `fresh.onclick = ...` runs the moment the script is evaluated.
     at = harness.index("let said = [], asked = [];")
-    got = run(chr(10).join(harness[:at]) + chr(10) + paint + chr(10) + click
-              + chr(10) + chr(10).join(harness[at:]))
+    got = run(chr(10).join(harness[:at]) + chr(10) + paint + chr(10) + twostep
+              + chr(10) + click + chr(10) + chr(10).join(harness[at:]))
     assert got["look"] == "true", (
         "Clear does not say it is off while the agent works: %r" % (got,))
     assert got["whileWorking"]["asked"] == [], (
@@ -133,9 +143,29 @@ def test_clear_explains_itself_instead_of_going_dead():
     assert len(got["whileWorking"]["said"]) == 1 and "stop the run" in got["whileWorking"]["said"][0], (
         "a press on Clear during a run does nothing and says nothing: %r"
         % (got["whileWorking"],))
-    assert got["idle"] == {"said": [], "asked": ["/chat/fresh"], "disabled": False}, (
-        "Clear at rest no longer clears, or explains something to nobody: %r"
-        % (got["idle"],))
+    assert got["whileWorking"]["armed"] is False, (
+        "a press during a run armed the control, so the next press after the "
+        "run ends clears without asking: %r" % (got["whileWorking"],))
+    # ⛔ TWO PRESSES, AND NO NATIVE DIALOG. `confirm` blocks the thread it is
+    # called on: while it is up the frame pump stops, the transcript stops
+    # drawing and the step clock freezes, on a product whose claim is that you
+    # can watch the agent work. The sentence it carried is on the control.
+    assert got["once"]["asked"] == [] and got["once"]["armed"] is True, (
+        "one press clears the conversation, which is the guard being on the "
+        "wrong control again: %r" % (got["once"],))
+    assert got["once"]["word"] == "Clear?" and "forgets everything" in got["once"]["why"], (
+        "the armed control does not say what the next press will do: %r"
+        % (got["once"],))
+    assert got["twice"]["asked"] == ["/chat/fresh"], (
+        "the second press does not clear: %r" % (got["twice"],))
+    assert got["twice"]["armed"] is False and got["twice"]["word"] == "Clear", (
+        "the control stays armed after it has been used: %r" % (got["twice"],))
+    assert got["twice"]["disabled"] is False, (
+        "the control went dead rather than saying why")
+
+    assert "confirm(" not in CODE and "prompt(" not in CODE, (
+        "a native dialog is back on this page, and it stops the live view, the "
+        "transcript and the clocks for as long as it is up")
 
 
 @needs_node
