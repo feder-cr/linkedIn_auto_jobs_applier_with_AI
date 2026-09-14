@@ -78,7 +78,7 @@ class Wire:
 @contextlib.asynccontextmanager
 async def listening(svc, headers=()):
     """One subscription to `/chat/events`, open for the body of the block."""
-    app = build_app(svc.link, Sessions.around(svc))
+    app = build_app(Sessions.around(svc))
     scope = {
         "type": "http", "asgi": {"version": "3.0", "spec_version": "2.1"},
         "http_version": "1.1", "method": "GET", "scheme": "http",

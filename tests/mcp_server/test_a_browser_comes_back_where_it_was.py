@@ -64,6 +64,9 @@ def registry(monkeypatch):
     reg = w.registry
 
     async def _went(session, url, wait_until="domcontentloaded"):
+        # Opens the tab when there is none, as the real one does.
+        if not session.pages:
+            await session.new_page()
         session.pages[-1] = url
         return "navigated to %s" % url
 

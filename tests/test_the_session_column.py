@@ -400,7 +400,7 @@ async def _client(sessions):
     reached does so through `sessions.get(...)`'s own recorded double instead.
     """
     from starlette.testclient import TestClient
-    return TestClient(build_app(FakeLink(), sessions))
+    return TestClient(build_app(sessions))
 
 
 async def test_the_routes_act_on_the_conversation_the_page_names():

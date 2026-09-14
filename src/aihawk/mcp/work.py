@@ -99,6 +99,13 @@ NOTHING_TO_READ = ("no browser is running in %r, so there is nothing to read. "
                    "Open one with browser_open, or send a command such as "
                    "browser_navigate, which starts it. Reading does not.")
 
+#: What the listing says when nothing is open. Same rule as the read's
+#: sentence, said of the whole piece of work: a command opens a browser, a
+#: read does not, and the listing is a read.
+NO_BROWSER_OPEN = ("no browser open yet. Open one with browser_open, or send a "
+                   "command such as browser_navigate, which starts it. Listing "
+                   "does not.")
+
 #: What an action's answer is prefixed with when the browser had to be rebuilt
 #: underneath it. Said, because until 0.51.0 it was not: a person watching the
 #: window saw it close and reopen, and the transcript showed a navigation that
@@ -285,7 +292,6 @@ class Work:
         session = await self.registry.ensure(at)
         if owed:
             try:
-                await session.new_page()
                 await actions.navigate(session, owed[-1])
             except Exception:
                 # A url that will not load must not cost the browser. It is

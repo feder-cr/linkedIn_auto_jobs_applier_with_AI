@@ -27,6 +27,7 @@ from typing import Dict, Optional
 
 from invisible_playwright.async_api import TargetClosedError
 
+from .plan import plan_session
 from .session import StealthSession
 
 # ⛔ `DEFAULT_SESSION_ID` MOVED TO `store.py`, WHICH IS WHAT IT NAMES: a
@@ -105,11 +106,8 @@ class BrowserRegistry:
         self._locks: Dict[str, asyncio.Lock] = {}
 
     def _default_config(self) -> dict:
-        # Late import: the planner reads config and identity, which have no
-        # business importing the registry back.
         if self._defaults is not None:
             return self._defaults()
-        from .plan import plan_session
         return plan_session().kwargs
 
     def config(self, key: str) -> Optional[dict]:
@@ -191,8 +189,8 @@ class BrowserRegistry:
         So a session is stored only once it has actually started.
 
         ⛔ AND A REBUILD IS THE SAME PERSON, WHICH IS WHY `_configs` EXISTS.
-        Every browsing tool runs through `_retrying`, which on any exception
-        drops the session and calls this again. Building the replacement from
+        Every browsing tool runs through `Work.retrying`, which on a closed
+        target drops the session and calls this again. Building the replacement from
         the environment - what this did until now - meant one timeout silently
         replaced the caller's seed, profile AND PROXY with whatever the shell
         happened to hold, so the traffic left from the host's own address while

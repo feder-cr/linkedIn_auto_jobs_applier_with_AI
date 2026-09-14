@@ -419,17 +419,6 @@ async def screenshot_png(session) -> bytes:
     return await session.page().screenshot()
 
 
-async def watch_jpeg(session) -> bytes:
-    """Raw JPEG bytes of the whole browser WINDOW of the active tab.
-
-    What a person at the machine would see: tab strip, address bar, page and
-    the pointer, which no page screenshot can contain because the engine draws
-    it outside the page on purpose. Comes from a live capture the session keeps
-    running on the tab (`StealthSession.watch_frame`).
-    """
-    return await session.watch_frame()
-
-
 # --- acting ----------------------------------------------------------------
 
 DIAGNOSE_JS = """(sel) => {

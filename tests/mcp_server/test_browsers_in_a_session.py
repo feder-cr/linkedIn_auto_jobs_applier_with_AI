@@ -282,3 +282,25 @@ async def test_the_helper_goes_out_through_the_same_exit_as_the_identity(registr
     assert told != mine, (
         "an explicit exit for the helper was overridden by the identity's: %r"
         % (told,))
+
+
+async def test_opening_answers_with_the_plan_it_made(registry, tmp_path):
+    """The answer carries what the PLAN knew and the launch does not: where the
+    seed came from, and the warning that a profile is returning through another
+    exit.
+
+    That warning used to be computed and thrown away. `browser_open` made the
+    plan, took its `kwargs`, and then answered from what the registry held -
+    the launch, which is the plan minus every note the planner attached to it.
+    So a login returning from another country, the exact tell the planner
+    checks for, was reported to nobody.
+
+    Known-bad: answer with `plan.describe(work.registry.config(at))` again.
+    """
+    person = str(tmp_path / "person")
+    await server.browser_open(profile=person, proxy="socks5://exit-a.invalid:1080")
+
+    said = await server.browser_open(profile=person, proxy="socks5://exit-b.invalid:1080")
+
+    assert "warning:" in said, "the exit changed under a profile and the answer did not say so"
+    assert "exit-a.invalid" in said and "exit-b.invalid" in said

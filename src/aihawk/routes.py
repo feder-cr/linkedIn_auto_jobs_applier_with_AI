@@ -13,7 +13,7 @@ from starlette.responses import HTMLResponse, JSONResponse, Response, StreamingR
 from starlette.routing import Route
 
 from .chat import ChatService, DEFAULT_CHAT_ID
-from .link import Link, image_of, text_of
+from .link import image_of, text_of
 from .mcp import NOTHING_RUNNING
 from .sessions import SessionGone, Sessions
 from .ui import PAGE
@@ -76,7 +76,7 @@ def resume_point(marker: str, epoch: str) -> tuple[int, bool]:
 NO_BROWSERS = {"browsers": [], "focus": "", "limit": 0}
 
 
-def build_app(link: Link, sessions: "Sessions") -> Starlette:
+def build_app(sessions: "Sessions") -> Starlette:
     async def named(session_id: str | None) -> ChatService:
         """The conversation with this id, refusing one nobody declared.
 

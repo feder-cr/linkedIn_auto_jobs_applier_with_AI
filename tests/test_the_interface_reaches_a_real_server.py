@@ -76,8 +76,8 @@ async def live(tmp_path, monkeypatch):
     monkeypatch.setenv("AIHAWK_HOME", str(tmp_path / "home"))
     monkeypatch.setenv("PYTHONPATH", _SRC + os.pathsep + os.environ.get("PYTHONPATH", ""))
     sessions = Sessions({}, None, _NoBrain, model_label="none")
-    default = await sessions.get(DEFAULT_CHAT_ID)
-    app = build_app(default.link, sessions)
+    await sessions.get(DEFAULT_CHAT_ID)
+    app = build_app(sessions)
     transport = httpx.ASGITransport(app=app)
     try:
         async with httpx.AsyncClient(transport=transport,

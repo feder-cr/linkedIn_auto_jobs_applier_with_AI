@@ -142,7 +142,7 @@ async def test_the_replay_flag_is_on_history_and_not_on_live_events():
     svc = ChatService(FakeLink(), TalkingBrain())
     await svc.send("go")
 
-    app = build_app(FakeLink(), Sessions.around(svc))
+    app = build_app(Sessions.around(svc))
     stream = [r for r in app.routes if r.path == "/chat/events"][0]
     assert stream is not None, "the events route must exist for the page to work"
 
@@ -162,7 +162,7 @@ async def test_an_event_after_subscription_is_delivered_once_as_live():
     send it once as replay and then again as live.
     """
     svc = ChatService(FakeLink(), SilentBrain())
-    app = build_app(FakeLink(), Sessions.around(svc))
+    app = build_app(Sessions.around(svc))
     route = [r for r in app.routes if r.path == "/chat/events"][0]
 
     class Req:
@@ -278,7 +278,7 @@ async def test_the_app_exposes_exactly_the_routes_the_page_calls():
     rather than a restatement of it.
     """
     svc = ChatService(FakeLink(), SilentBrain())
-    paths = {r.path for r in build_app(FakeLink(), Sessions.around(svc)).routes}
+    paths = {r.path for r in build_app(Sessions.around(svc)).routes}
     assert paths == {"/",
                      # The session column, added in 0.17.0.
                      "/sessions", "/sessions/new", "/sessions/rename",
@@ -369,7 +369,7 @@ async def test_the_live_view_never_causes_a_browser_to_start():
     """
     link = FakeLink()
     svc = ChatService(link, SilentBrain())
-    app = build_app(link, Sessions.around(svc))
+    app = build_app(Sessions.around(svc))
     frame = [r for r in app.routes if r.path == "/live/frame"][0]
 
     class Req:
@@ -435,7 +435,7 @@ class WatchingLink(FakeLink):
 
 
 async def _frame_route(link):
-    app = build_app(link, Sessions.around(ChatService(link, SilentBrain())))
+    app = build_app(Sessions.around(ChatService(link, SilentBrain())))
     return [r for r in app.routes if r.path == "/live/frame"][0].endpoint
 
 
@@ -782,7 +782,7 @@ async def test_a_reconnection_resumes_instead_of_replaying_the_whole_thing():
     listener below then receives the whole history again.
     """
     svc = ChatService(FakeLink(), SilentBrain())
-    app = build_app(FakeLink(), Sessions.around(svc))
+    app = build_app(Sessions.around(svc))
     events = [r for r in app.routes if r.path == "/chat/events"][0]
 
     for text in ("first", "second", "third"):
@@ -811,7 +811,7 @@ async def test_a_reconnection_carrying_another_conversation_is_told_to_wipe():
     Known-bad: comparing only the index and ignoring the epoch.
     """
     svc = ChatService(FakeLink(), SilentBrain())
-    app = build_app(FakeLink(), Sessions.around(svc))
+    app = build_app(Sessions.around(svc))
     events = [r for r in app.routes if r.path == "/chat/events"][0]
     await svc.emit("said", "from the conversation that is gone")
 
@@ -845,7 +845,7 @@ async def test_a_page_that_joins_a_run_in_flight_is_told_the_run_is_in_flight():
     """
     brain = HangingBrain()
     svc = ChatService(FakeLink(), brain)
-    app = build_app(FakeLink(), Sessions.around(svc))
+    app = build_app(Sessions.around(svc))
     events = [r for r in app.routes if r.path == "/chat/events"][0]
 
     svc.start("something long")
@@ -891,7 +891,7 @@ async def test_a_page_that_joins_an_idle_service_is_told_the_turn_is_over():
     svc = ChatService(FakeLink(), SilentBrain())
     svc.history = [{"kind": "you", "text": "what is on the page"},
                    {"kind": "said", "text": "Three roles, all remote."}]
-    app = build_app(FakeLink(), Sessions.around(svc))
+    app = build_app(Sessions.around(svc))
     events = [r for r in app.routes if r.path == "/chat/events"][0]
 
     resp = await events.endpoint(_Req())

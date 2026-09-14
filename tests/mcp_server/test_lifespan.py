@@ -81,52 +81,65 @@ async def test_close_all_is_what_actually_shuts_them_down():
     assert server.work.registry.ids() == []
 
 
-def test_the_exit_hook_is_registered():
-    """Without this the browsers would simply leak: Firefox launches a tree of
-    processes, and an orphan goes on holding its profile directory and port.
-
-    ⛔ THIS TEST DID NOT TEST ITS OWN NAME. It asserted only that
-    `_close_sessions_at_exit` EXISTS and is callable, which stays true if the
-    `atexit.register` line is deleted - the leak it is named for would ship
-    green. Above it sat a dead `registered = ...` line, a first attempt at
-    reading `atexit._exithandlers` that CPython does not expose, left in place
-    with a comment explaining the retreat.
-
-    ⛔ AND THE OBVIOUS REPLACEMENT IS INERT ON THIS INTERPRETER, which is worth
-    writing down because it looks like it works. `atexit.unregister(f)` then
-    comparing `atexit._ncallbacks()` reads like a behavioural proof; measured
-    on CPython 3.12.0, the count does NOT go down after `unregister` - not for
-    this function and not for a freshly registered local one either. A test
-    built on it fails against correct code, which is the worst kind of gate:
-    it accuses the product of the defect it was written to find.
-
-    So this reads the SOURCE, which is what this suite already does elsewhere
-    for properties no behaviour test can reach (`test_addressing.py` scans the
-    same module for unaddressed registry calls). Over the AST rather than for
-    a substring, because this project has a recorded case of a gate satisfied
-    by the COMMENT next to the call it was checking for.
-
-    Known-bad: comment out `atexit.register(_close_sessions_at_exit)` in
-    `mcp/server.py`. The old assertion stayed green; this one goes red.
-    """
-    import ast
-    import inspect
+def _main_with(monkeypatch, transport):
+    """Run `main()` under this transport with the serving and the hook stubbed,
+    and answer what it registered with atexit."""
+    import atexit
 
     from aihawk.mcp import server
 
-    assert callable(server._close_sessions_at_exit)
+    registered = []
+    monkeypatch.setattr(atexit, "register", lambda fn, *a, **k: registered.append(fn))
+    monkeypatch.setattr(server.mcp, "run", lambda *a, **k: None)
+    monkeypatch.setattr(server, "_close_on_lifespan_exit", False)
+    if transport is None:
+        monkeypatch.delenv("STEALTHFOX_MCP_TRANSPORT", raising=False)
+    else:
+        monkeypatch.setenv("STEALTHFOX_MCP_TRANSPORT", transport)
+    server.main()
+    return registered
 
-    tree = ast.parse(inspect.getsource(server))
-    registered = [
-        node for node in tree.body
-        if isinstance(node, ast.Expr) and isinstance(node.value, ast.Call)
-        and isinstance(node.value.func, ast.Attribute)
-        and node.value.func.attr == "register"
-        and isinstance(node.value.func.value, ast.Name)
-        and node.value.func.value.id == "atexit"
-        and any(isinstance(a, ast.Name) and a.id == "_close_sessions_at_exit"
-                for a in node.value.args)
-    ]
-    assert registered, (
-        "nothing registers the browser-closing hook at import, so an ending "
+
+def test_over_http_the_exit_hook_is_registered(monkeypatch):
+    """Without this the browsers would simply leak over HTTP: the lifespan
+    there is per CLIENT and must not close anything, so process exit is the
+    only moment left, and Firefox is a tree of processes holding a profile
+    directory and a port.
+
+    ⛔ BEHAVIOUR, NOT A SCAN. This used to walk the module's AST for a
+    top-level `atexit.register(...)` line, because `atexit` exposes no way to
+    read what is registered. Stubbing `atexit.register` for the span of one
+    `main()` call reads exactly that, and it can tell the two transports
+    apart, which a scan for a module-level line never could.
+
+    Known-bad: drop the `atexit.register` line from the HTTP branch of
+    `main()`. Green before; red now.
+    """
+    from aihawk.mcp import server
+
+    registered = _main_with(monkeypatch, "http")
+
+    assert server._close_sessions_at_exit in registered, (
+        "over HTTP nothing registers the browser-closing hook, so an ending "
         "process leaves Firefox holding its profile directory and its port")
+    assert server._close_on_lifespan_exit is False, (
+        "the HTTP lifespan is per client and must not close the browsers")
+
+
+def test_over_stdio_the_lifespan_closes_and_no_hook_is_registered(monkeypatch):
+    """Over stdio the lifespan exit IS the last moment the loop that opened
+    the browsers still runs, so the close happens there. An atexit hook on top
+    would run in a NEW loop, where an await on a Playwright object from the
+    finished one never answers - measured at 180 s of waiting on Linux.
+
+    Known-bad: register the hook unconditionally at import, as this module
+    did until this test existed. Green before; red now.
+    """
+    from aihawk.mcp import server
+
+    registered = _main_with(monkeypatch, None)
+
+    assert server._close_on_lifespan_exit is True
+    assert server._close_sessions_at_exit not in registered, (
+        "stdio registered the exit hook as well, which runs in a loop that is "
+        "not the browsers' own and hangs the process on exit")

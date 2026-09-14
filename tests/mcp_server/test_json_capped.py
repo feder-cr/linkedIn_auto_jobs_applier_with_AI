@@ -2,15 +2,15 @@ import json
 
 
 def test_small_object_returns_normal_json():
-    from aihawk.mcp.server import _json_capped
-    s = _json_capped({"a": 1})
+    from aihawk.mcp.actions import json_capped
+    s = json_capped({"a": 1})
     assert json.loads(s) == {"a": 1}
 
 
 def test_large_object_returns_valid_truncated_json():
-    from aihawk.mcp.server import _json_capped
+    from aihawk.mcp.actions import json_capped
     big = {"data": "x" * 20000}
-    s = _json_capped(big, limit=6000)
+    s = json_capped(big, limit=6000)
     parsed = json.loads(s)  # must not raise: slicing raw JSON breaks this
     assert parsed["truncated"] is True
     assert parsed["chars"] > 6000
