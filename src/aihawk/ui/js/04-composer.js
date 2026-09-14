@@ -134,6 +134,7 @@ function wipe(){
      process stops believing in a run that died with the old one - which
      otherwise left the composer saying "queue for next turn" forever. */
   busyNow = false;
+  seen();
   setQueued(null);
   /* And the page can introduce itself again. Clear emptied the pane to
      nothing at all, on a product whose whole first-run explanation was

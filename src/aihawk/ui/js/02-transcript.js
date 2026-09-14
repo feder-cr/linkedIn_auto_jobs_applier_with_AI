@@ -53,7 +53,26 @@ function newTurn(){
   n = 0; turn = el('section','turn'); thread.appendChild(turn); return turn;
 }
 function put(node, replay){ if(!turn) newTurn(); if(replay) node.dataset.replay = '1';
-                            turn.appendChild(node); }
+                            turn.appendChild(node);
+                            /* Counted only while the way back is on screen,
+                               which is exactly when it is worth counting. */
+                            if(!$('jump').hidden){ behind++; paintJump(); } }
+
+/* ⛔ WHILE A READER IS SCROLLED UP, NOTHING ON SCREEN SAYS THE AGENT IS ALIVE.
+   Every signal of life is drawn at the BOTTOM of the transcript - the clock on
+   the running step, the `Thinking` row, the time climbing - which is precisely
+   where the reader is not when they need one. Measured on a real run: the
+   agent took 59 steps while the owner watched the first 14, with nothing on
+   screen to say the thing was working.
+
+   The count goes on the one control that IS on screen, because that is where
+   the eye already is. Not a live region: the transcript is already one, so a
+   screen reader hears every row arrive. This is for the eye. */
+function paintJump(){
+  $('jump').textContent = behind ? 'jump to latest - ' + behind + ' new'
+                                 : 'jump to latest';
+}
+function seen(){ behind = 0; paintJump(); }
 
 /* The narration is held for one event, so a sentence followed by tool calls
    reads as their lead-in and a sentence with nothing after it reads as the
@@ -166,34 +185,73 @@ function land(kind, text, replay){
   live = null;
   const s = close(d, kind === 'err' ? 'err' : 'ok', kind === 'err' ? 'failed' : '');
   if(!replay) s.lastElementChild.textContent = dur(performance.now() - t0);
-  /* Short output goes ON the row and the row stops being expandable. In an
+  /* Output that fits goes ON the row and the row stops being expandable. In an
      ordinary run most rows are then one line with the answer already visible,
-     which is the difference between a list and a stack of accordions. */
-  /* On both branches: the row says its whole result on hover whether or not
-     it fits, so a result truncated on the row is readable without opening
-     anything. It used to be set only on the long branch. */
-  s.querySelector('.lab').title = text.slice(0, 400);
-  if(text.length <= LONG && text.indexOf('\n') < 0){
-    /* ⛔ AND IT LEAVES THE TAB ORDER WITH THE SAME STATEMENT THAT DECIDES IT
-       HAS NO BODY. Every finished step stayed a focusable disclosure, so a
-       keyboard user crossing a fifty step run pressed Tab fifty times through
-       rows where Enter opens nothing - the transcript between the sessions
-       button and the composer was a minefield of controls that do not
-       control anything. Still reachable by click and in a screen reader's
-       browse mode; only the sequential order gives it up. */
-    d.dataset.body = 'none'; s.tabIndex = -1;
-    /* ⛔ NOT WHEN IT ONLY REPEATS THE ROW. A click answers `clicked <target>`
-       and the row already reads `Clicked <target>`, so the most frequent line
-       in the product said the same four words twice - eighteen times in a
-       row on a real run, and in the owner's own screenshot. An echo is not
-       information. A result that says anything more than the row does, an
-       address with a status, a heading that was read, is still shown. */
-    if(!echoes(s, text)) s.querySelector('.lab').append(' ', el('span','inline', text));
-  } else {
-    /* Anything that does not fit keeps a body, so the chevron is present for
-       exactly the rows that need it. */
-    d.appendChild(el('pre','out', text));
-  }
+     which is the difference between a list and a stack of accordions.
+     The row says its whole result on hover whatever it does with it, so a
+     result cut by the ellipsis is readable without opening anything - and
+     hovering is a path for a pointer and for nobody else, which is why the
+     disclosure below is decided by measurement and not by a guess. */
+  const lab = s.querySelector('.lab');
+  lab.title = text.slice(0, 400);
+  const oneLine = text.indexOf('\n') < 0;
+  /* ⛔ NOT WHEN IT ONLY REPEATS THE ROW. A click answers `clicked <target>`
+     and the row already reads `Clicked <target>`, so the most frequent line in
+     the product said the same four words twice - eighteen times in a row on a
+     real run, and in the owner's own screenshot. An echo is not information. A
+     result that says anything more than the row does, an address with a
+     status, a heading that was read, is still shown. */
+  if(oneLine && !echoes(s, text)) lab.append(' ', el('span','inline', text));
+  /* Anything with a line break in it cannot go on a row at all. */
+  if(!oneLine) return d.appendChild(el('pre','out', text));
+  /* ⛔ AND IT LEAVES THE TAB ORDER WITH THE SAME STATEMENT THAT DECIDES IT HAS
+     NO BODY. Every finished step stayed a focusable disclosure, so a keyboard
+     user crossing a fifty step run pressed Tab fifty times through rows where
+     Enter opens nothing - the transcript between the sessions button and the
+     composer was a minefield of controls that do not control anything. Still
+     reachable by click and in a screen reader's browse mode; only the
+     sequential order gives it up.
+
+     Assumed here and corrected by the measurement below, so the common row -
+     the one that fits - never grows a chevron for a frame and then loses it. */
+  d.dataset.body = 'none'; s.tabIndex = -1;
+  fitOrOpen(d, s, lab, text);
+}
+
+/* ⛔ THE ROW IS MEASURED, NOT COUNTED. The threshold was a number of CHARACTERS
+   of the RESULT, while the row also carries the verb and the argument, in a
+   track the stylesheet sizes: measured 266px on some rows and 376 on others,
+   against the 416 the old comment assumed. So a row could be cut off by the
+   ellipsis AND have had its disclosure removed for being short. Measured on a
+   real transcript of 82 rows: 39 had no chevron, 29 were cut, and THIRTEEN were
+   both - their text reachable only by resting a pointer on it, which is no path
+   at all from a keyboard or a touchscreen.
+
+   The same defect was recorded at 120 characters and the fix was to lower the
+   number. Lowering it reduced the count and could not remove it, because the
+   criterion is wrong in KIND: a count in characters standing in for a fit in
+   pixels. The row is asked the same question the eye asks.
+
+   ⛔ AND THE READS ARE BATCHED, WHICH IS WHY THIS IS NOT A MEASUREMENT PER ROW.
+   Reading `scrollWidth` flushes layout, and a row is appended just before, so
+   measuring inside `land` would force one full layout per row - which a replay
+   of a long transcript pays all at once on load. Every read happens first and
+   every write after, so a burst of two hundred rows costs ONE layout instead of
+   two hundred. */
+let toFit = [];
+function fitOrOpen(d, s, lab, text){
+  toFit.push({d: d, s: s, lab: lab, text: text});
+  if(toFit.length > 1) return;
+  requestAnimationFrame(() => {
+    const rows = toFit; toFit = [];
+    for(const r of rows) r.fits = r.lab.scrollWidth <= r.lab.clientWidth;
+    for(const r of rows){
+      if(r.fits) continue;
+      delete r.d.dataset.body;
+      r.s.removeAttribute('tabindex');
+      r.d.appendChild(el('pre','out', r.text));
+    }
+  });
 }
 
 function orphan(kind, text, replay){
