@@ -19,9 +19,26 @@ hid the omission: the check moved on and the old gap stayed behind it. Eleven
 published versions across three packages turned out to have no release, three of
 them published after the backfill that test was written to protect.
 
-ONE-DIRECTIONAL on purpose. A release for a version not yet on the index is a
-normal intermediate state during a publish. An index version with no release is
-the thing that gets forgotten, precisely because nothing breaks.
+ONE-DIRECTIONAL on purpose, for RELEASE PAGES. A release page for a version not
+yet on the index is a normal intermediate state during a publish. An index
+version with no release page is the thing that gets forgotten, precisely because
+nothing breaks.
+
+⛔ AND THE OTHER DIRECTION HAS A HOLE THAT COST A RELEASE ON 2026-09-14, WHICH
+THE SECOND WALK BELOW CLOSES. `v0.56.0` was tagged, the publish workflow ran,
+its `gate` job died on a 504 downloading the engine from GitHub Releases, and
+`upload` was therefore SKIPPED. So the tag existed, main carried the bumped
+version, and the index served nothing - a state indistinguishable from a
+successful release unless somebody opens the run and reads it. Nothing in this
+suite could see it: this file walks the INDEX, so a version that never reached
+the index is not in anything it looks at, and `test_version_is_not_taken`
+answers "free" for exactly that case, which is its correct answer.
+
+A TAG is the durable artifact of an attempted release - the release page is not,
+because a failed gate skips that too - so the second walk starts from tags, and
+it is bounded by AGE rather than being forbidden outright: a tag pushed a minute
+ago and not yet on the index is a publish in flight, which is normal, and one
+from an hour ago is a release that silently shipped nothing.
 
 Enabled by AIHAWK_CHECK_RELEASES, which the `releases` CI job sets. It is one API
 call per version against a network service, so it does not belong in the unit
@@ -29,8 +46,10 @@ suite, and a job that sets the variable itself cannot silently skip.
 """
 from __future__ import annotations
 
+import datetime
 import json
 import os
+import re
 import urllib.error
 import urllib.request
 
@@ -108,6 +127,87 @@ def test_every_published_version_has_a_release_page():
             f"the walk stopped at {cut_short[0]} on HTTP {cut_short[1]} after "
             f"{checked} of {len(versions)} versions, so the rest is unknown")
     assert not problems, "; ".join(problems)
+
+
+#: How long a tag may exist without its version being on the index. A publish
+#: takes about ten minutes when the engine downloads cleanly; this is loose
+#: enough that a release in flight is never a red gate, and tight enough that a
+#: failed one is red on the same afternoon.
+PUBLISH_GRACE_MINUTES = 45
+
+
+def _all_index_versions():
+    """Every version the index has ever served, yanked ones included.
+
+    ⛔ NOT the live list the walk above uses. A yank says nobody should install
+    that version; it does not say it was never published, and a tag for a yanked
+    version is a release that DID happen. Comparing tags against the live list
+    would report every yank as a failed publish.
+    """
+    with urllib.request.urlopen(f"https://pypi.org/pypi/{PACKAGE}/json", timeout=30) as resp:
+        return {v for v, files in json.load(resp)["releases"].items() if files}
+
+
+def _github(path, headers):
+    with urllib.request.urlopen(
+            urllib.request.Request(f"https://api.github.com/repos/{REPOSITORY}/{path}",
+                                   headers=headers), timeout=30) as resp:
+        return json.load(resp)
+
+
+def test_every_tag_older_than_the_grace_reached_the_index():
+    """A tag that published nothing, said out loud.
+
+    Measured 2026-09-14: `v0.56.0` was tagged and its publish run died in the
+    gate on a 504 from GitHub's release assets, so `upload` was skipped and the
+    index served nothing for ten minutes, with a red workflow as the only
+    signal. Re-running the failed jobs published it. Had nobody looked, the next
+    release would have been 0.57.0 and that version would simply not exist.
+
+    Known-bad: point PACKAGE at a name this account does not publish, and every
+    tag becomes a suspect.
+
+    Cheap by construction: one call for the tags, one for the index, and one per
+    SUSPECT, which on a healthy repository is none.
+    """
+    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+    headers = {"Accept": "application/vnd.github+json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    tags, page = {}, 1
+    while True:
+        got = _github(f"tags?per_page=100&page={page}", headers)
+        if not got:
+            break
+        for one in got:
+            if re.fullmatch(r"v\d+\.\d+\.\d+", one["name"]):
+                tags[one["name"][1:]] = one["commit"]["sha"]
+        if len(got) < 100:
+            break
+        page += 1
+
+    assert tags, "no version tag was found at all, so this walk is watching nothing"
+
+    published = _all_index_versions()
+    suspects = sorted(set(tags) - published,
+                      key=lambda v: tuple(int(p) for p in v.split(".")))
+
+    now = datetime.datetime.now(datetime.timezone.utc)
+    stale = []
+    for version in suspects:
+        when = _github(f"commits/{tags[version]}", headers)["commit"]["committer"]["date"]
+        at = datetime.datetime.fromisoformat(when.replace("Z", "+00:00"))
+        old_by = (now - at).total_seconds() / 60
+        if old_by > PUBLISH_GRACE_MINUTES:
+            stale.append("v%s (tagged %d minutes ago)" % (version, old_by))
+
+    assert not stale, (
+        "tagged and never published: %s. The tag exists, the index does not "
+        "serve that version, and a release from a later tag would leave it "
+        "missing for good. Open the publish run for that tag and read which "
+        "job failed; re-running the failed jobs is usually the whole fix."
+        % ", ".join(stale))
 
 
 def test_the_walk_covers_more_than_the_latest_version():
