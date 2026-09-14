@@ -21,6 +21,7 @@ import json
 import pytest
 
 from aihawk.mcp import server
+from aihawk.mcp.work import Work
 
 
 class _Recording:
@@ -48,9 +49,10 @@ def registry(monkeypatch):
     # registry the product does not have is testing something else, and the
     # wiring that writes a session down would be exercised by nothing. Missed
     # here when the file was reconstructed after the checkout was deleted.
-    reg = server.new_registry(factory=_Recording,
+    w = Work("default", factory=_Recording,
                               defaults=lambda: {"seed": 7, "headless": True})
-    monkeypatch.setattr(server, "registry", reg)
+    monkeypatch.setattr(server, "work", w)
+    reg = w.registry
     return reg
 
 
@@ -69,7 +71,7 @@ async def test_the_helper_is_its_own_browser_and_not_the_identity(registry):
     await server.browser_open()
     await server.browser_open(browser="support")
 
-    assert server.browsers_in() == ["main", "support"]
+    assert server.work.roles() == ["main", "support"]
     assert registry.peek("default/main") is not registry.peek("default/support"), (
         "the helper and the identity are one browser, so the helper carries "
         "the identity's cookies")
@@ -91,10 +93,9 @@ async def test_opening_the_helper_does_not_move_where_commands_go(registry):
     """
     await server.browser_open(browser="support")
 
-    assert server.focused() == server.DEFAULT_BROWSER_ID
-    assert server.addressed() == "default/main", (
+    assert server.work.key() == "default/main", (
         "opening the helper moved where an unaddressed command lands")
-    assert server.addressed(browser_id=server.SUPPORT_BROWSER_ID) == "default/support"
+    assert server.work.key(role=server.SUPPORT_BROWSER_ID) == "default/support"
 
 
 async def test_a_third_browser_is_refused_and_the_refusal_says_where_to_go(registry):
@@ -124,7 +125,7 @@ async def test_a_third_browser_is_refused_and_the_refusal_says_where_to_go(regis
     """
     for role in ("main", "support"):
         await server.browser_open(browser=role)
-    held = server.browsers_in()
+    held = server.work.roles()
     assert len(held) == server.MAX_BROWSERS_PER_SESSION
 
     # ⛔ AND IT IS RAISED, NOT RETURNED. A refusal handed back as a successful
@@ -135,7 +136,7 @@ async def test_a_third_browser_is_refused_and_the_refusal_says_where_to_go(regis
         await server.browser_open(browser="one-too-many")
     said = str(refused.value)
 
-    assert server.browsers_in() == held, "a third browser was opened anyway"
+    assert server.work.roles() == held, "a third browser was opened anyway"
     assert "main" in said and "support" in said, (
         "the refusal does not name the two browsers that DO exist, so the "
         "next turn has nothing to try instead: %r" % said)
@@ -158,7 +159,7 @@ async def test_closing_forgets_who_that_browser_was(registry):
 
     await server.browser_close(browser="support")
 
-    assert server.browsers_in() == []
+    assert server.work.roles() == []
     assert registry.config("default/support") is None, \
         "the closed browser's identity is still remembered"
 
@@ -175,8 +176,7 @@ async def test_closing_the_helper_leaves_commands_pointing_at_the_identity(regis
     await server.browser_open(browser="support")
     await server.browser_close(browser="support")
 
-    assert server.focused() == server.DEFAULT_BROWSER_ID
-    assert server.addressed() == "default/%s" % server.DEFAULT_BROWSER_ID
+    assert server.work.key() == "default/%s" % server.DEFAULT_BROWSER_ID
 
 
 #: ⛔ `test_two_sessions_do_not_share_their_browsers` STOOD HERE AND IS GONE.
@@ -207,17 +207,17 @@ async def test_the_count_is_read_from_the_registry_and_not_from_a_second_list(re
     """
     await server.browser_open()
     await server.browser_open(browser="support")
-    assert server.browsers_in() == ["main", "support"]
+    assert server.work.roles() == ["main", "support"]
 
     await registry.drop("default/support")
 
-    assert "support" in server.browsers_in(), (
+    assert "support" in server.work.roles(), (
         "a browser whose engine died stopped being one of the session's "
         "browsers, so the identity it comes back as is now nobody's")
 
     await registry.forget("default/support")
 
-    assert server.browsers_in() == ["main"], (
+    assert server.work.roles() == ["main"], (
         "a browser that was deliberately forgotten is still one of the "
         "session's, so the next helper would wear its identity")
 

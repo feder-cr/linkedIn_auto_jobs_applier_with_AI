@@ -137,11 +137,10 @@ def _aihawk_home_is_disposable(tmp_path, monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _the_server_remembers_nothing_from_the_last_test():
-    """The four things the server module holds between calls.
+    """The one thing the server module holds between calls, made new.
 
-    Emptied rather than replaced: a test that monkeypatches one of them still
-    gets its own, and a test that does not gets an empty one instead of
-    whatever the file before it left.
+    Replaced, so a test that does not install its own `Work` gets an empty
+    one instead of whatever the file before it left.
 
     ⛔ LOOKED UP IN `sys.modules`, NEVER IMPORTED, and the first version got
     that wrong. An autouse fixture runs for EVERY test in the repository, so
@@ -156,17 +155,12 @@ def _the_server_remembers_nothing_from_the_last_test():
     nothing to clear.
     """
     server = sys.modules.get("aihawk.mcp.server")
-    if server is not None:
-        for held in ("_seen_tabs", "_tabs_owed"):
-            got = getattr(server, held, None)
-            if got is not None:
-                got.clear()
-        # ⛔ NOT A DICT SINCE 2026-09-11. `_restored` used to be `_loaded`, a
-        # set keyed by session id, because one process could hold several. It
-        # is a single flag now: one process, one piece of work, restored at
-        # most once.
-        if hasattr(server, "_restored"):
-            server._restored = False
+    if server is not None and hasattr(server, "Work"):
+        # ⛔ ONE OBJECT, WHERE THIS CLEARED FOUR GLOBALS BY NAME. The server
+        # holds its whole piece of work - registry, restored flag, pages seen
+        # and pages owed - in one `Work`, so a clean server is a new one; a
+        # test that installs its own through monkeypatch still gets its own.
+        server.work = server.Work(server._SESSION_ID)
     yield
 
 

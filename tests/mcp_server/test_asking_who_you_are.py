@@ -19,7 +19,7 @@ from __future__ import annotations
 import pytest
 
 from aihawk.mcp import server
-from aihawk.mcp.registry import BrowserRegistry
+from aihawk.mcp.work import Work
 
 
 class _Recording:
@@ -45,9 +45,9 @@ def registry(monkeypatch):
     def _explode():
         raise AssertionError("session_status resolved a plan, so it is not read only")
 
-    reg = BrowserRegistry(factory=_Recording, defaults=_explode)
-    monkeypatch.setattr(server, "registry", reg)
-    return reg
+    w = Work("default", factory=_Recording, defaults=_explode)
+    monkeypatch.setattr(server, "work", w)
+    return w.registry
 
 
 #: Where a caller that names no browser is filed. The tests below put a session
@@ -57,7 +57,7 @@ def registry(monkeypatch):
 #: password does not appear in the answer and went on passing, over an answer
 #: that had become "no browser is running yet". A test that stops reaching its
 #: subject does not report anything.
-HERE = server.addressed()
+HERE = server.work.key()
 
 
 async def test_with_nothing_running_it_says_so(registry):

@@ -29,9 +29,34 @@ import pathlib
 import pytest
 
 from aihawk.mcp import actions, server
+from aihawk.mcp import work as work_module
+from aihawk.mcp.work import Work
 from aihawk.mcp.registry import BrowserRegistry
 
 SERVER_PY = pathlib.Path(inspect.getfile(server))
+WORK_PY = pathlib.Path(inspect.getfile(work_module))
+
+#: The two modules that reach the registry, and the name each one reaches it
+#: through: the server holds ONE `Work` called `work`, and inside the class it
+#: is `self`. A key is composed by `<owner>.key(...)` in both.
+REACHERS = ((SERVER_PY, "work"), (WORK_PY, "self"))
+
+
+def _reaches_registry(call, owner):
+    """`<owner>.registry.<method>(...)`, answering the method, else None."""
+    f = call.func
+    if (isinstance(f, ast.Attribute) and isinstance(f.value, ast.Attribute)
+            and f.value.attr == "registry" and isinstance(f.value.value, ast.Name)
+            and f.value.value.id == owner):
+        return f.attr
+    return None
+
+
+def _composes_key(node, owner):
+    """`<owner>.key(...)`: the one way an address is made."""
+    return (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "key" and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == owner)
 
 #: The registry methods that take a browser address. Derived from the registry
 #: instead of typed out, so a method added there is guarded the day it exists.
@@ -70,9 +95,10 @@ def registry(monkeypatch):
     rather than `BrowserRegistry` for the same reason one step further out: the
     product's registry writes what it holds down, and a bare one does not.
     """
-    reg = server.new_registry(factory=_Recording,
+    w = Work("default", factory=_Recording,
                               defaults=lambda: {"seed": 7, "headless": True})
-    monkeypatch.setattr(server, "registry", reg)
+    monkeypatch.setattr(server, "work", w)
+    reg = w.registry
     return reg
 
 
@@ -188,17 +214,21 @@ async def test_a_rebuild_of_one_browser_leaves_the_others_alone(registry, echo,
         if failures["left"]:
             failures["left"] -= 1
             raise RuntimeError("Target page, context or browser has been closed")
-        return session
+        return "went"
 
-    # `browser_navigate` is the one tool left that goes through `_retrying`,
+    # `browser_navigate` is the one tool left that goes through `retrying`,
     # which is the machinery under test here.
     monkeypatch.setattr(actions, "navigate", _fails_once)
-    rebuilt = await server.browser_navigate("http://127.0.0.1/", browser="support")
+    answer = await server.browser_navigate("http://127.0.0.1/", browser="support")
 
+    # ⛔ SAID, SINCE 0.51.0. A person watching the window saw it close and
+    # reopen while the transcript showed a navigation that simply worked.
+    assert answer == server.REBUILT % "support" + "went", (
+        "the rebuild happened and the answer did not say so: %r" % answer)
+    rebuilt = registry.peek(_key("support"))
     assert rebuilt is not support, "the browser that failed was handed back, not rebuilt"
-    assert support.closed, "the failing browser was dropped without being closed"
-    assert registry.peek(_key()) is main and not main.closed, (
-        "recovery on one browser closed another one")
+    assert registry.peek(_key()) is main, (
+        "main was closed while the caller was working in support")
 
 
 async def test_opening_one_browser_does_not_restart_the_other(registry, echo):
@@ -254,9 +284,9 @@ def test_the_exempted_helpers_are_still_the_ones_they_name():
     takes it for a description of the module.
     """
     absent = sorted(n for n in WALK_KEYS_THE_REGISTRY_ALREADY_HOLDS
-                    if not callable(getattr(server, n, None)))
+                    if not callable(getattr(Work, n, None)))
     assert not absent, (
-        "exempted from the address scan but no longer in the server: %r. "
+        "exempted from the address scan but no longer on Work: %r. "
         "Either the function was renamed, in which case rename it here, or it "
         "is gone, in which case delete the exemption." % absent)
 
@@ -280,45 +310,39 @@ WALK_KEYS_THE_REGISTRY_ALREADY_HOLDS = {"remember", "restore"}
 
 
 def _scan_registry_calls():
-    """Every `registry.<addressable>(...)` in the server, and whether it carries
-    an address.
+    """Every `<owner>.registry.<addressable>(...)` in the two modules that reach
+    the registry, and whether it carries an address.
 
-    Read per enclosing function, because `_retrying` addresses once into a local
+    Read per enclosing function, because `retrying` addresses once into a local
     and then uses it three times: a name is accepted only where it was bound to
-    `addressed(...)` in scope.
+    `<owner>.key(...)` in scope.
     """
-    tree = ast.parse(SERVER_PY.read_text(encoding="utf-8"))
     unaddressed, checked = [], {}
-
-    for holder in ast.walk(tree):
-        if (isinstance(holder, (ast.FunctionDef, ast.AsyncFunctionDef))
-                and holder.name in WALK_KEYS_THE_REGISTRY_ALREADY_HOLDS):
-            continue
-        if not isinstance(holder, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            continue
-        bound = set()
-        for node in ast.walk(holder):
-            if (isinstance(node, ast.Assign) and isinstance(node.value, ast.Call)
-                    and isinstance(node.value.func, ast.Name)
-                    and node.value.func.id == "addressed"):
-                bound |= {t.id for t in node.targets if isinstance(t, ast.Name)}
-
-        for node in ast.walk(holder):
-            if not (isinstance(node, ast.Call)
-                    and isinstance(node.func, ast.Attribute)
-                    and isinstance(node.func.value, ast.Name)
-                    and node.func.value.id == "registry"
-                    and node.func.attr in ADDRESSABLE):
+    for path, owner in REACHERS:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for holder in ast.walk(tree):
+            if not isinstance(holder, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
-            checked[node.lineno] = "%s: registry.%s" % (holder.name, node.func.attr)
-            given = node.args[0] if node.args else next(
-                (k.value for k in node.keywords if k.arg == "key"), None)
-            composed_here = (isinstance(given, ast.Call)
-                             and isinstance(given.func, ast.Name)
-                             and given.func.id == "addressed")
-            composed_earlier = isinstance(given, ast.Name) and given.id in bound
-            if not (composed_here or composed_earlier):
-                unaddressed.append("line %d, %s" % (node.lineno, checked[node.lineno]))
+            if holder.name in WALK_KEYS_THE_REGISTRY_ALREADY_HOLDS:
+                continue
+            bound = set()
+            for node in ast.walk(holder):
+                if isinstance(node, ast.Assign) and _composes_key(node.value, owner):
+                    bound |= {t.id for t in node.targets if isinstance(t, ast.Name)}
+
+            for node in ast.walk(holder):
+                if not isinstance(node, ast.Call):
+                    continue
+                method = _reaches_registry(node, owner)
+                if method not in ADDRESSABLE:
+                    continue
+                where = "%s:%d" % (path.name, node.lineno)
+                checked[where] = "%s: %s.registry.%s" % (holder.name, owner, method)
+                given = node.args[0] if node.args else next(
+                    (k.value for k in node.keywords if k.arg == "key"), None)
+                composed_earlier = isinstance(given, ast.Name) and given.id in bound
+                if not (_composes_key(given, owner) or composed_earlier):
+                    unaddressed.append("%s, %s" % (where, checked[where]))
 
     return unaddressed, checked
 
@@ -334,7 +358,9 @@ def test_no_registry_call_in_the_server_is_left_without_an_address():
     the property is asserted over the source rather than sampled.
 
     Known-bad, run before this was trusted: turn any one
-    `registry.ensure(addressed(browser_id))` back into `registry.ensure()`.
+    `self.registry.ensure(self.key(role))` in `work.py`, or one
+    `work.registry.peek(work.key(name))` in the server, into a call with no
+    key composed.
     """
     unaddressed, checked = _scan_registry_calls()
 
@@ -351,9 +377,13 @@ def test_no_registry_call_in_the_server_is_left_without_an_address():
     # able to get it wrong. Lowering a floor is normally how a gate is quietly
     # switched off, which is why the reason is written here and why the
     # companion test below asserts that the funnel is what the tools use.
-    assert len(checked) >= 10, (
-        "only %d registry calls were found in %s; has the module moved?"
-        % (len(checked), SERVER_PY.name))
+    # ⛔ AND 10 -> 9 WHEN THE LIFECYCLE BECAME ONE OBJECT (0.51.0): the tools
+    # keep six calls (open, close, list, status), the object keeps three
+    # (wake, look, drop on recovery). One fewer because `browser_open` used
+    # to ask `config` twice; nothing stopped being guarded.
+    assert len(checked) >= 9, (
+        "only %d registry calls were found across %s; has a module moved?"
+        % (len(checked), [p.name for p, _ in REACHERS]))
 
 
 def test_no_tool_reaches_for_a_browser_on_its_own():
@@ -368,7 +398,7 @@ def test_no_tool_reaches_for_a_browser_on_its_own():
     `ensure` for itself would hand back that browser with none of its pages -
     a browser that is right about who it is and wrong about where it was.
 
-    Known-bad: put `await registry.ensure(addressed(browser_id))` back into
+    Known-bad: put `await work.registry.ensure(work.key(browser))` back into
     any one tool. The scan above still passes, because that call IS addressed;
     only this one sees it.
     """
@@ -388,11 +418,8 @@ def test_no_tool_reaches_for_a_browser_on_its_own():
         if not decorated or node.name in NOT_DRIVING_A_PAGE:
             continue
         for inner in ast.walk(node):
-            if (isinstance(inner, ast.Call)
-                    and isinstance(inner.func, ast.Attribute)
-                    and isinstance(inner.func.value, ast.Name)
-                    and inner.func.value.id == "registry"):
-                rogue.append("%s: registry.%s" % (node.name, inner.func.attr))
+            if isinstance(inner, ast.Call) and _reaches_registry(inner, "work"):
+                rogue.append("%s: work.registry.%s" % (node.name, inner.func.attr))
     assert not rogue, (
         "these reach the registry themselves instead of asking `ready` for a "
         "browser, so a browser restored from disk comes back without its "
@@ -424,14 +451,13 @@ def _tools_that_reach_a_browser():
         for inner in ast.walk(node):
             if not isinstance(inner, ast.Call):
                 continue
+            if _reaches_registry(inner, "work") in ADDRESSABLE:
+                found.add(node.name)
             if (isinstance(inner.func, ast.Attribute)
                     and isinstance(inner.func.value, ast.Name)
-                    and inner.func.value.id == "registry"
-                    and inner.func.attr in ADDRESSABLE):
-                found.add(node.name)
-            if (isinstance(inner.func, ast.Name)
-                    and inner.func.id in ("_retrying", "ready", "already_open",
-                                          "looking")):
+                    and inner.func.value.id == "work"
+                    and inner.func.attr in ("retrying", "ready", "already_open",
+                                            "looking")):
                 found.add(node.name)
     return found
 

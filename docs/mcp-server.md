@@ -181,7 +181,10 @@ reported as it happened, on the browser you have, with its cookies and its
 pages intact. Only a browser that is actually gone is rebuilt as the same
 identity, and the command retried once. Before 0.50.0 any failure closed the
 browser and opened a new one to try again, which failed the same way a browser
-later.
+later. From 0.51.0 a rebuild is said: the answer starts with "the main browser
+had died and was reopened as the same person, on the page it was on", so a
+model knows an ephemeral browser's cookies are gone and a login may need
+redoing.
 
 If the tools do not appear in your client, the fastest way to tell a broken
 registration from a broken server is to skip the client:
