@@ -16,11 +16,15 @@ in the transcript. The workbench records them as [B202], [B203] and [B204].
 The lifecycle, in the order it happens:
 
   declare   `restore()` reads the saved file and declares who `main` is,
-            without starting anything.
+            without starting anything. Every entry point below calls
+            it first; `key()` composes an address and does nothing else.
+  open      `open()` plans a browser - the identity, the exit, the
+            profile - and starts it as that person; `close()` forgets it.
   wake      `ready()` starts a declared browser the first time a COMMAND is
             aimed at it, and reopens the one page the file owed it.
   look      `looking()` and `already_open()` answer a browser that is running
             and never start one: a question is not a command.
+            `listing()` and `status()` answer for the whole piece of work.
   act       `retrying()` runs one action, and rebuilds the browser once - as
             the same person, back on its page - only if the browser is GONE.
   remember  `remember()` writes down who is held and where, on every change
@@ -36,7 +40,7 @@ from __future__ import annotations
 
 from typing import Awaitable, Callable, Optional
 
-from . import actions, plan, store
+from . import actions, identity, plan, store
 from .registry import BrowserRegistry
 from .session import StealthSession
 
@@ -154,8 +158,15 @@ class Work:
         Everything addresses through this. A single caller reaching for the
         bare role would look at one browser while its neighbours wrote to
         another, and nothing would raise.
+
+        Pure: it composes a string. Until 0.52.0 it also read the saved
+        file the first time, so a module that composed an address at
+        import restored a session at import - the class of defect the
+        suite's conftest exists to keep out. `restore` runs where a
+        piece of work is ENTERED: `roles`, `ready`, `open`, `close`,
+        `status`. Not `looking`: it answers a RUNNING browser, and a restore
+        declares one without starting it, so it changes no answer there.
         """
-        self.restore()
         return "%s/%s" % (self.session_id, role or DEFAULT_BROWSER_ID)
 
     def roles(self) -> list:
@@ -276,6 +287,181 @@ class Work:
         self._seen_tabs[key] = fresh
         self.remember()
 
+    # --- open and close -------------------------------------------------------
+
+    async def open(self, role: str, *, seed: Optional[int] = None,
+                   proxy: Optional[str] = None,
+                   profile: Optional[str] = None) -> str:
+        """Open one of the two browsers as somebody, or reopen it as somebody
+        else. Answers with the plan it made.
+
+        ⛔ THE ANSWER IS THE PLAN, NOT A SENTENCE RE-DERIVED FROM THE LAUNCH.
+        The plan knows two things the launch does not carry: where the seed
+        came from, and the warning that a profile is returning through another
+        exit. Until 0.52.0 the plan was made, its kwargs taken, and the rest
+        dropped on the floor, so a login arriving from another country - the
+        exact tell the planner checks for - was reported to nobody.
+        """
+        if role not in (DEFAULT_BROWSER_ID, SUPPORT_BROWSER_ID):
+            # ⛔ THE SCHEMA ALREADY REFUSES THIS AND THIS STILL REFUSES IT. The
+            # tool's `browser` is a Literal, so a model that invents a name is
+            # turned back by the protocol before it reaches here - but the
+            # schema is not the only door: the interface and the tests call
+            # these functions directly, and a third browser called `b3` is the
+            # thing two fixed roles exist to rule out.
+            raise ValueError("there are two browsers here: `main`, your own "
+                             "identity, and `support`, the helper beside it. "
+                             "There is no %r." % role)
+        self.restore()
+        try:
+            chosen = plan.plan_session(seed=seed, proxy=proxy, profile=profile)
+        except (identity.IdentityConflict, ValueError) as exc:
+            # Refused, not guessed. Every case here is one where continuing
+            # would hand the caller a different person than the one they asked
+            # for, and whatever is already running is deliberately left alone:
+            # a refusal must not cost somebody the browser they already had.
+            raise ValueError("refused: %s" % exc)
+        settings = chosen.kwargs
+        exit_note = chosen.exit
+
+        main_config = self.registry.config(self.key())
+        if role == SUPPORT_BROWSER_ID and proxy is None and main_config is not None:
+            # ⛔ THE HELPER INHERITS THE EXIT, BY DEFAULT AND ON PURPOSE. A
+            # helper that came out through a different address than the
+            # identity it helps would be the one thing on the wire saying
+            # "these two are not the same person, and yet they work together".
+            # Its FINGERPRINT is its own - a fresh seed unless given - because
+            # the two must not read as one browser either. Same exit, different
+            # person: a colleague at the next desk.
+            #
+            # Copied AFTER planning and as the resolved dict, not passed in as
+            # a url: the plan takes a url and `main` holds the dict it was
+            # launched with, and re-deriving one from the other is a second
+            # reader of the same fact. And it copies the ABSENCE too: a `main`
+            # that goes out direct has no `proxy` key, so the helper goes out
+            # direct as well, rather than picking up an environment proxy
+            # `main` never used. Only when `main` has not been declared at all
+            # is the environment left to decide, which is what `main` itself
+            # will do when it starts.
+            settings.pop("proxy", None)
+            if main_config.get("proxy"):
+                settings["proxy"] = main_config["proxy"]
+            exit_note = "this machine's own address, the same as main"
+        try:
+            await self.registry.restart(self.key(role), **settings)
+        except Exception as exc:
+            # ⛔ Said plainly, because the dangerous reading is "that failed,
+            # carry on". Nothing is running there now, and every later tool
+            # will repeat this refusal rather than quietly starting a browser
+            # without the exit that was asked for.
+            raise RuntimeError(
+                "the %s browser did NOT start: %s\n"
+                "Nothing is browsing there, and the tools will keep failing "
+                "until browser_open succeeds. A proxy that is down is the "
+                "usual cause; try another exit, or pass proxy=\"\" to go out "
+                "from this machine knowing that is what you are doing."
+                % (role, exc))
+        return "the %s browser is open. %s" % (role, plan.describe(
+            settings, seed_from=chosen.seed_from, exit_note=exit_note,
+            warnings=chosen.warnings))
+
+    async def close(self, role: str) -> str:
+        """Close one browser and forget who it was. The other is not touched."""
+        self.restore()
+        existed = await self.registry.forget(self.key(role))
+        left = self.roles()
+        if not existed:
+            return "the %s browser is not open." % role
+        return ("the %s browser is closed. Still open: %s."
+                % (role, ", ".join(left) if left else "none"))
+
+    # --- look at the whole piece of work -------------------------------------
+
+    async def listing(self) -> dict:
+        """Which browsers are here, where each one is, and which one commands
+        that name none go to. Starts nothing.
+
+        One row per browser: `id`, `running`, `focused`, `url` (the page it
+        is on) and `urls` (every page it holds). `urls` is a list, or None for
+        "running and unreadable" - the two are different answers and the pane
+        draws them differently, which is why the type says so rather than
+        collapsing the second into an empty list.
+        """
+        have = self.roles()
+        here = DEFAULT_BROWSER_ID
+        rows = []
+        for name in have:
+            session = self.registry.peek(self.key(name))
+            urls: list | None = []
+            here_url, running = "", session is not None
+            if session is not None:
+                try:
+                    pages = await session.describe_pages()
+                    urls = [p["url"] or "" for p in pages]
+                    # ⛔ WHICH PAGE IS THE LIVE ONE, and it has to come from
+                    # here. The interface used to learn the address from the
+                    # tab tool, which marked the active row; with the tab
+                    # tools gone this is the only place that still knows, and
+                    # the answer the address bar needs is the ACTIVE page
+                    # rather than the first - a site that opens one of its own
+                    # makes those two different, and `session.page()` drives
+                    # the newest live one.
+                    shown = next((p for p in pages if p["active"]),
+                                 pages[0] if pages else None)
+                    here_url = (shown["url"] or "") if shown else ""
+                    self.note_tabs(self.key(name), urls)
+                except Exception:
+                    # Readable as a state rather than as an absence: a browser
+                    # whose pages cannot be read is not a browser with no
+                    # pages, and a pane drawing "nothing open" over a live
+                    # window would be a lie.
+                    running, urls = True, None
+            rows.append({"id": name, "running": running, "focused": name == here,
+                         "url": here_url, "urls": urls})
+        return {
+            "focus": here,
+            "limit": MAX_BROWSERS_PER_SESSION,
+            "browsers": rows,
+            "note": (NO_BROWSER_OPEN if not rows else
+                     "%d of %d browsers. Commands that name none go to %s."
+                     % (len(rows), MAX_BROWSERS_PER_SESSION, here)),
+        }
+
+    async def status(self, role: str) -> str:
+        """Who this browser is - identity, exit, profile - and the page it is
+        on. Starts nothing, and says so when nothing is running."""
+        self.restore()
+        at = self.key(role)
+        config = self.registry.config(at)
+        if config is None:
+            return NOTHING_TO_READ % role
+
+        session = self.registry.peek(at)
+        if session is None:
+            where = "the browser is not up; the next tool restarts it as this person"
+        else:
+            try:
+                rows = await session.describe_pages()
+                here = next((r for r in rows if r["active"]), rows[0] if rows else None)
+                where = (here["url"] or "blank") if here else "no page open yet"
+                # ⛔ COUNTED, AND NOT BLAMED ON ANYBODY. A caller cannot make,
+                # choose or close a page, so the honest report of a second one
+                # is that it is there - not who opened it. The first version
+                # of this line said "the site has opened %d more", and
+                # measured on a restored browser it was false: `ready` was
+                # opening them itself, one per saved url. Fixing that left
+                # this sentence true, and it still does not say it, because a
+                # confident wrong cause is the defect this project removed
+                # from `navigate` ("navigated to {url}" whatever happened).
+                # Counted, never named: naming them would offer a vocabulary
+                # nothing here accepts.
+                if len(rows) > 1:
+                    where += " (%d other pages are open in this browser)" % (len(rows) - 1)
+            except Exception:
+                where = "the page is unreadable"
+
+        return plan.describe(config) + " page: %s." % where
+
     # --- wake and look --------------------------------------------------------
 
     async def ready(self, role: Optional[str] = None) -> StealthSession:
@@ -287,6 +473,7 @@ class Work:
         the browser was ON, which is the last the file recorded: a browser
         that has been woken owns where it goes next.
         """
+        self.restore()
         at = self.key(role)
         owed = self._tabs_owed.pop(at, None)
         session = await self.registry.ensure(at)

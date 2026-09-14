@@ -379,9 +379,11 @@ def test_no_registry_call_in_the_server_is_left_without_an_address():
     # switched off, which is why the reason is written here and why the
     # companion test below asserts that the funnel is what the tools use.
     # ⛔ AND 10 -> 9 WHEN THE LIFECYCLE BECAME ONE OBJECT (0.51.0): the tools
-    # keep six calls (open, close, list, status), the object keeps three
-    # (wake, look, drop on recovery). One fewer because `browser_open` used
-    # to ask `config` twice; nothing stopped being guarded.
+    # kept six calls (open, close, list, status), the object three (wake,
+    # look, drop on recovery). One fewer because `browser_open` used to ask
+    # `config` twice; nothing stopped being guarded. Since 0.52.0 all nine
+    # are the object's: no tool reaches the registry at all, and the scan
+    # of `server.py` is kept so that stays true.
     assert len(checked) >= 9, (
         "only %d registry calls were found across %s; has a module moved?"
         % (len(checked), [p.name for p, _ in REACHERS]))
@@ -458,7 +460,8 @@ def _tools_that_reach_a_browser():
                     and isinstance(inner.func.value, ast.Name)
                     and inner.func.value.id == "work"
                     and inner.func.attr in ("retrying", "ready", "already_open",
-                                            "looking")):
+                                            "looking", "open", "close",
+                                            "status")):
                 found.add(node.name)
     return found
 
@@ -476,10 +479,9 @@ async def test_every_tool_that_reaches_a_browser_offers_a_way_to_name_it():
     ⛔ ONE EXEMPTION, and it is about the QUESTION rather than about the tool.
     `browser_list` asks which of the two browsers are open in THIS process, and
     that question has no second one to ask it about - it is not one browser
-    telling you about itself, so it takes no `browser` at all. It reaches the
-    registry once per browser it lists - that is what makes the scan find it -
-    but the browsers are the ones this process already has, not one a caller
-    named.
+    telling you about itself, so it takes no `browser` at all. It goes through
+    `Work.listing`, which the scan does not count; it is exempted by name all
+    the same, so the exemption outlives the shape of the scan.
 
     Exempting it by name rather than by loosening the rule to "most of them"
     keeps the rule able to catch the case it exists for: a tool that acts on a

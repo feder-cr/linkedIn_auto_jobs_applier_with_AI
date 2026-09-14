@@ -304,3 +304,21 @@ async def test_opening_answers_with_the_plan_it_made(registry, tmp_path):
 
     assert "warning:" in said, "the exit changed under a profile and the answer did not say so"
     assert "exit-a.invalid" in said and "exit-b.invalid" in said
+
+
+async def test_the_listing_has_a_row_per_browser_here(registry):
+    """Both of them, with the helper marked as not the focus.
+
+    Known-bad: list `roles()[:1]`. The shape test above stays green on an
+    empty session and the count test never asks the listing.
+    """
+    import json
+
+    await server.browser_open()
+    await server.browser_open(browser="support")
+
+    rows = json.loads(await server.browser_list())["browsers"]
+
+    assert [r["id"] for r in rows] == ["main", "support"]
+    assert [r["focused"] for r in rows] == [True, False]
+    assert all(r["running"] for r in rows)
