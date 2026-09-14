@@ -427,7 +427,8 @@ async def browser_navigate(url: str, wait_until: str = "domcontentloaded",
 
 
 @mcp.tool(annotations=_says("Read the page text", read_only=True))
-async def browser_read_text(selector: str = "body", max_chars: int = 6000,
+async def browser_read_text(selector: str = "body",
+                            max_chars: int = actions.DEFAULT_MAX_CHARS,
                             browser: Browser = None) -> str:
     """The visible text of an element, with the markup gone.
 
@@ -437,6 +438,21 @@ async def browser_read_text(selector: str = "body", max_chars: int = 6000,
 
     Long text is cut at max_chars (6000 by default) and the cut is marked in
     what comes back, so text that ends without that marker is the whole thing."""
+    # ⛔ THE CAP WAS WRITTEN THREE TIMES: the constant in `actions.py`, this
+    # signature, and the prose above. The signature was the copy worth removing
+    # - nothing read it back, so it could drift from the constant in silence
+    # and the tool would honour a number its own module did not declare.
+    #
+    # ⛔ THE PROSE COPY STAYS, AND A DRAFT THAT DELETED IT WAS WRONG. The
+    # reasoning was that the schema already publishes `"default": 6000`, so the
+    # sentence is a second copy - which is true and is not the whole story:
+    # `test_the_two_readers_do_not_pretend_to_share_a_cap` holds that this
+    # description declares its cap while `browser_read_html` declares it has
+    # none, because a reader shown one and not the other assumes symmetry, and
+    # the two differ by 34x on a large page. A number that has a reason to be
+    # written twice gets a GATE, not a deletion: `test_the_cap_in_the_prose_is
+    # _the_cap_the_tool_uses` ties this digit to the constant, so the copy
+    # cannot drift even though it stays.
     return await work.acting(actions.read_text, selector, max_chars, role=browser)
 
 
@@ -445,19 +461,30 @@ async def browser_snapshot(max_chars: int = 0, browser: Browser = None) -> str:
     """Title, url, and the interactive elements that are actually visible.
 
     Each element carries a `selector` when one can reach it: pass that string to
-    browser_click or browser_type VERBATIM. It is built to match exactly one
-    element, which the obvious selector often does not - measured across 958
-    elements on real pages, 88% could be addressed but only 48% unambiguously,
-    and Playwright acts on the first match, so a caller aiming at the third of
-    five identical links would silently hit the first.
+    browser_click or browser_type VERBATIM rather than writing your own. It is
+    built to match exactly ONE element, which the obvious selector often does
+    not, and the driver acts on the first match - so a caller aiming at the
+    third of five identical links would silently hit the first and be told it
+    succeeded.
 
     Elements with no `selector` carry `at`, the centre coordinates, for
     browser_click_at.
 
-    Not the accessibility tree: on a real sign-up page a single country
-    `<select>` contributes about two hundred `<option>` nodes, which fill the
-    character cap before the form the caller was looking for appears at all.
+    It lists what a caller can act on, and it is not the accessibility tree:
+    one country `<select>` would otherwise fill the answer with its options
+    before the form you were looking for appears.
     """
+    # ⛔ THE MEASUREMENTS BEHIND THE TWO PARAGRAPHS ABOVE LIVE IN `actions.py`,
+    # BESIDE THE CODE THEY JUSTIFY, and used to live here as well. The numbers
+    # - 958 elements, 88% addressable and 48% unambiguous, two hundred option
+    # nodes - are why the selector is BUILT and why the inventory is not the
+    # accessibility tree. That is a developer's question. What the model needs
+    # is the rule, and it keeps every rule those sentences carried.
+    #
+    # A measurement written in two places is a measurement that will be re-run
+    # once and updated once, and the copy that stays wrong is the one a model
+    # reads. It also spends the 1024 characters this description is cut at on
+    # evidence for a reader who is not there.
     return await work.acting(actions.snapshot, max_chars, role=browser)
 
 

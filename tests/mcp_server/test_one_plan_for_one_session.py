@@ -116,6 +116,29 @@ def test_no_proxy_switched_off_does_not_suppress_the_proxy():
     assert "proxy" in plan.plan_session(env=env).kwargs
 
 
+def test_the_veto_is_the_environment_vetoing_itself():
+    """⛔ STEALTHFOX_NO_PROXY MUST NOT REFUSE A PROXY THE CALLER ASKED FOR.
+    The variable says what this machine's configuration wants when nobody
+    said otherwise; a caller that passed an exit said otherwise. A variable
+    set for some other session is not a reason to hand somebody a different
+    address than the one they named - and the caller who wants no proxy has
+    a way to say so, which is `""`, tested above.
+
+    ⛔ THIS WAS ALWAYS THE BEHAVIOUR AND NOTHING HELD IT. The old code got it
+    from the ORDER of two returns: the explicit branch returned before the
+    veto was read. Found on 2026-09-15 by a surviving mutation - dropping the
+    guard changed nothing that any test could see - which is the whole use of
+    a known-bad input: it does not only judge the change, it finds what the
+    suite never looked at.
+
+    Known-bad: read the veto before asking whether the caller said anything.
+    """
+    env = {"STEALTHFOX_NO_PROXY": "1"}
+    got = plan.plan_session(proxy="socks5://host.invalid:1080", env=env).kwargs
+    assert got.get("proxy", {}).get("server") == "socks5://host.invalid:1080", (
+        "an environment variable refused the exit the caller named: %r" % got)
+
+
 # -- seeds ------------------------------------------------------------------
 
 def test_seed_zero_is_a_seed():
