@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import sys
 
 import pytest
 
@@ -141,6 +142,98 @@ async def test_an_engine_without_a_screencast_is_named_not_leaked():
     assert "firefox-28" in str(told.value)
 
 
+def _timed(s: StealthSession):
+    """A clock the test moves, in place of sleeping through STALE_AFTER."""
+    now = [1000.0]
+    s._clock = lambda: now[0]
+    return now
+
+
+@pytest.mark.asyncio
+async def test_a_capture_that_went_quiet_is_started_again():
+    """⛔ A FRAME SERVED WITHOUT AN AGE IS A FROZEN PANE THAT LOOKS LIVE.
+
+    The engine's window capture can end for good on its own - the WebRTC
+    capturer reports a permanent error the first time a headed window is
+    minimised, the capture timer is cancelled, and nothing says so - and this
+    method answered the last frame it held, forever. Measured 2026-09-14: the
+    pane showed a search page while the browser was two sites on, the capture
+    thread at 0 ms of CPU over six seconds.
+
+    Known-bad: the age check removed. The second look answers `one` with the
+    capture never restarted, and this goes red on `two`.
+    """
+    s = StealthSession()
+    s._context = _FakeContext()
+    pid = await s.new_page()
+    page = s.page(pid)
+    now = _timed(s)
+
+    asyncio.get_running_loop().call_later(
+        0.02, page.screencast.deliver, b"\xff\xd8\xff one")
+    assert (await s.watch_frame()).endswith(b"one")
+
+    now[0] += StealthSession.STALE_AFTER + 0.5
+
+    async def feed_the_restart():
+        while len(page.screencast.starts) < 2:
+            await asyncio.sleep(0.005)
+        page.screencast.deliver(b"\xff\xd8\xff two")
+
+    asyncio.create_task(feed_the_restart())
+    got = await s.watch_frame()
+
+    assert got.endswith(b"two"), got
+    assert page.screencast.stops == 1, "the quiet capture was not stopped"
+    assert len(page.screencast.starts) == 2, "the capture was not started again"
+
+
+@pytest.mark.asyncio
+async def test_a_quiet_page_is_not_a_quiet_capture():
+    """The counter-case: frames keep arriving on a page that never changes,
+    so a young frame is served as it is. Restarting on every look would cost a
+    capture thread twenty-five times a second."""
+    s = StealthSession()
+    s._context = _FakeContext()
+    pid = await s.new_page()
+    page = s.page(pid)
+    now = _timed(s)
+
+    asyncio.get_running_loop().call_later(
+        0.02, page.screencast.deliver, b"\xff\xd8\xff still")
+    await s.watch_frame()
+    now[0] += StealthSession.STALE_AFTER / 2
+    page.screencast.deliver(b"\xff\xd8\xff still")
+    now[0] += StealthSession.STALE_AFTER / 2 + 0.2
+
+    assert (await s.watch_frame()).endswith(b"still")
+    assert len(page.screencast.starts) == 1, "a live capture was restarted"
+
+
+@pytest.mark.asyncio
+async def test_a_restart_that_stays_silent_is_dropped_with_the_reason():
+    """A capture started on a window that cannot be captured - minimised, say
+    - delivers nothing, and keeping it would make every later look wait on it.
+    It is stopped, the reason is said, and the next look starts its own."""
+    s = StealthSession()
+    s._context = _FakeContext()
+    pid = await s.new_page()
+    page = s.page(pid)
+    now = _timed(s)
+
+    asyncio.get_running_loop().call_later(
+        0.02, page.screencast.deliver, b"\xff\xd8\xff one")
+    await s.watch_frame()
+    now[0] += StealthSession.STALE_AFTER + 0.5
+
+    with pytest.raises(RuntimeError) as told:
+        await s.watch_frame(timeout=0.05)
+
+    assert "minimised" in str(told.value)
+    assert pid not in s._watch, "a capture that never answered was kept"
+    assert page.screencast.stops == 2, "the silent restart was not stopped"
+
+
 BINARY = os.environ.get("STEALTHFOX_BINARY")
 
 
@@ -164,6 +257,78 @@ async def test_the_frame_is_the_window_of_a_real_browser():
         assert height > 600, "%d px tall: no chrome above the 600 px viewport" % height
     finally:
         await s.close()
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+@pytest.mark.skipif(not BINARY or sys.platform != "win32",
+                    reason="a real engine on Windows, where a window can be minimised")
+async def test_the_frame_comes_back_after_the_window_was_minimised():
+    """⛔ THE ENGINE ENDS THE CAPTURE FOR GOOD WHEN THE WINDOW IS MINIMISED, and
+    says nothing. Reproduced 2026-09-14 on firefox-29: minimise the window,
+    restore it, navigate - one frame forever, the capture thread idle. The
+    session now notices the silence and starts the capture again, and this is
+    the arm that proves it against the real engine.
+
+    Known-bad: `StealthSession.STALE_AFTER = 1e9` (no restart) - the frame
+    after the restore is still the frame from before the minimise.
+    """
+    import ctypes
+
+    user32 = ctypes.windll.user32
+    s = StealthSession(binary_path=BINARY, headless=True)
+    await s.start()
+    try:
+        await s.new_page()
+        await s.page().goto("data:text/html,<title>aihawk-minimise-probe</title>"
+                            "<body style='background:%23fff'>before</body>")
+        hwnd = _window_titled("aihawk-minimise-probe")
+        assert hwnd, "the probe window was not found on screen"
+        before = await s.watch_frame(timeout=10.0)
+
+        assert user32.ShowWindow(hwnd, 6)              # SW_MINIMIZE
+        await asyncio.sleep(2.0)
+        assert user32.ShowWindow(hwnd, 9)              # SW_RESTORE
+        await s.page().goto("data:text/html,<title>aihawk-minimise-probe</title>"
+                            "<body style='background:%23000;color:%23fff'>after</body>")
+
+        deadline = asyncio.get_running_loop().time() + 15.0
+        latest = before
+        while asyncio.get_running_loop().time() < deadline:
+            try:
+                latest = await s.watch_frame(timeout=3.0)
+            except RuntimeError:
+                pass
+            if latest != before:
+                break
+            await asyncio.sleep(0.2)
+        assert latest != before, (
+            "after minimise and restore the capture still answers the frame "
+            "from before the minimise")
+    finally:
+        await s.close()
+
+
+def _window_titled(part: str):
+    """The first top-level window whose title contains `part`, or 0."""
+    import ctypes
+    from ctypes import wintypes
+
+    user32 = ctypes.windll.user32
+    found = []
+
+    @ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
+    def each(hwnd, _):
+        n = user32.GetWindowTextLengthW(hwnd)
+        if n:
+            buf = ctypes.create_unicode_buffer(n + 1)
+            user32.GetWindowTextW(hwnd, buf, n + 1)
+            if part in buf.value:
+                found.append(hwnd)
+        return True
+
+    user32.EnumWindows(each, 0)
+    return found[0] if found else 0
 
 
 def _jpeg_height(data: bytes) -> int:

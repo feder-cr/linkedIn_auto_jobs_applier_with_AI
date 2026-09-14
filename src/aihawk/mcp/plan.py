@@ -188,6 +188,28 @@ def engine_here(env: Optional[Mapping[str, str]] = None) -> dict:
     return {"binary_path": named} if named else {}
 
 
+def launched_here(env: Optional[Mapping[str, str]] = None) -> dict:
+    """What THIS process decides about every browser it starts, whoever the
+    browser is: the engine it runs on, and whether its window is shown.
+
+    ⛔ TWO THINGS A SAVED SESSION MUST NOT DECIDE, read in one place. The engine
+    was already kept out of the file (`engine_here`, and the reason above).
+    `headless` was not, until 2026-09-14: the interface restored a `main` that
+    a headed process had saved and showed its window on screen, uncloaked, at a
+    launch that had asked for nothing of the kind - while the helper beside it,
+    planned from this environment, stayed hidden. A launch flag written into an
+    identity file outlives the launch it described. So the restore now writes
+    this over whatever the file says, and the planner reads the same function,
+    which is what keeps the two from disagreeing.
+    """
+    env = os.environ if env is None else env
+    decided: dict[str, Any] = {
+        "headless": env.get("STEALTHFOX_HEADLESS", "1") != "0",
+    }
+    decided.update(engine_here(env))
+    return decided
+
+
 def plan_session(seed: Optional[int] = None, proxy: Optional[str] = None,
                  profile: Optional[str] = None,
                  env: Optional[Mapping[str, str]] = None) -> SessionPlan:
@@ -224,11 +246,8 @@ def plan_session(seed: Optional[int] = None, proxy: Optional[str] = None,
     # and it died the same way when the CALLER had passed a perfectly good
     # proxy. Popping a duplicate is not removing it; every STEALTHFOX_* variable
     # now has exactly one reader.
-    kwargs: dict[str, Any] = {
-        "seed": chosen_seed,
-        "headless": env.get("STEALTHFOX_HEADLESS", "1") != "0",
-    }
-    kwargs.update(engine_here(env))
+    kwargs: dict[str, Any] = {"seed": chosen_seed}
+    kwargs.update(launched_here(env))
     if chosen_proxy is not None:
         kwargs["proxy"] = chosen_proxy
     if directory is not None:

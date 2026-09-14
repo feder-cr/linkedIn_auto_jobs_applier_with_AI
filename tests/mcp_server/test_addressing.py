@@ -154,11 +154,14 @@ async def test_main_and_support_are_two_different_browsers(registry, echo):
 
 async def test_a_rebuild_of_one_browser_leaves_the_others_alone(registry, echo,
                                                                 monkeypatch):
-    """⛔ `_retrying` drops and re-ensures on ANY failure, so the drop is as
-    addressed as the action, or recovery becomes the way browsers get killed.
+    """⛔ `_retrying` drops and re-ensures when the browser is GONE, so the drop
+    is as addressed as the action, or recovery becomes the way browsers get
+    killed.
 
     A browser that died between two calls is the ordinary case here, so this is
-    the common path rather than an exotic one.
+    the common path rather than an exotic one. The failure below carries the
+    sentence a closed target gives, because since 0.50.0 only that kind of
+    failure rebuilds anything (`test_only_a_dead_browser_is_rebuilt.py`).
 
     Two known-bad inputs:
 
@@ -184,7 +187,7 @@ async def test_a_rebuild_of_one_browser_leaves_the_others_alone(registry, echo,
     async def _fails_once(session, *args, **kwargs):
         if failures["left"]:
             failures["left"] -= 1
-            raise RuntimeError("the browser went away between two calls")
+            raise RuntimeError("Target page, context or browser has been closed")
         return session
 
     # `browser_navigate` is the one tool left that goes through `_retrying`,

@@ -57,6 +57,33 @@ def _is_usable(session) -> bool:
         return False
 
 
+#: What a browser that is GONE says, from the two layers that can say it. The
+#: vendored client raises `TargetClosedError` carrying the first sentence for
+#: any call on a page, context or browser that has closed; the Juggler bridge
+#: answers the other two when the pipe to Firefox is gone. Matched on the text
+#: because they reach a tool as plain exceptions from two classes that share no
+#: base worth importing here.
+CLOSED_SENTENCES = ("has been closed", "the pipe closed", "the pipe is closed")
+
+
+def looks_closed(failure: BaseException) -> bool:
+    """Whether this failure is the browser being gone, rather than the page
+    refusing.
+
+    ⛔ THE DIFFERENCE IS A BROWSER. `_retrying` in the server used to treat
+    EVERY exception as a dead browser: close the one it had, build a new one,
+    retry. A domain that does not resolve, a site that answers slowly, a click
+    that finds nothing - each threw away a healthy browser with its cookies,
+    its logins and its pages, and opened a fresh one to fail the same way
+    again. Measured 2026-09-14: `NS_ERROR_UNKNOWN_HOST` on the second command
+    of a conversation cost the interface's `main` browser, and the person
+    watched it close and reopen - the window was headed - for a typo in a
+    domain name. The retry then failed identically, so nothing was gained.
+    """
+    text = str(failure)
+    return any(sentence in text for sentence in CLOSED_SENTENCES)
+
+
 class BrowserRegistry:
     """Browsers by key, created on demand, closed on request or at shutdown."""
 
@@ -137,6 +164,21 @@ class BrowserRegistry:
 
     def ids(self) -> list:
         return sorted(self._browsers)
+
+    def is_dead(self, key: str, failure: BaseException) -> bool:
+        """Whether an action's failure means this browser is gone.
+
+        Two questions, because either alone misses a case. The object may
+        already report itself unusable - a browser whose connection dropped
+        between two calls - and that is what `_is_usable` reads. Or it may still
+        look fine while the call it just made was answered with the sentence a
+        closed target gives: a persistent-context session has no `_browser` to
+        ask, so the text is the only witness there.
+        """
+        existing = self._browsers.get(key)
+        if existing is None or not _is_usable(existing):
+            return True
+        return looks_closed(failure)
 
     async def ensure(self, key: str) -> StealthSession:
         """The browser for this key, started and usable.
