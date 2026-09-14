@@ -910,3 +910,122 @@ def test_the_top_row_is_one_line_across_the_whole_app():
         "this rule now both know it and only one of them will be updated: %s"
         % rule)
 
+
+
+def test_renaming_happens_in_the_row_and_escape_belongs_to_the_edit():
+    """⛔ NO NATIVE DIALOG, AND THE KEY GOES TO THE INNERMOST THING THAT OWNS IT.
+
+    `prompt` blocked the thread it was called on: while it was up the frame
+    pump stopped, the transcript stopped drawing and the step clock froze, on a
+    product whose whole claim is that you can watch the agent work. The name is
+    edited where the name already is.
+
+    And that moves a key. The panel takes Escape on the way DOWN and closes
+    itself - which is right while it is the innermost thing, and wrong the
+    moment an edit is open inside it: the key somebody presses to abandon a
+    rename would close the panel under them. The same rule the panel already
+    applies against the run, one level in.
+
+    Known-bad, three: call `prompt` again; commit on Escape instead of leaving
+    the name alone; drop the guard in the panel's capture handler and the
+    rename's Escape closes the panel.
+    """
+    import json
+    import shutil
+    import subprocess
+
+    import pytest
+
+    from aihawk.ui import PAGE
+
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("needs node to EXECUTE the rename")
+
+    code = PAGE[PAGE.index("<script"):]
+
+    def whole(start, end):
+        src = code[code.index(start):]
+        return src[:src.index(end) + len(end)]
+
+    harness = [
+        "let asked = [], drawn = 0, made = null, stopped = 0;",
+        "globalThis.drawChats = async () => { drawn++; };",
+        "globalThis.railsay = () => {};",
+        "globalThis.ask = async (path, body) => { asked.push(body); ",
+        "  return {json: async () => ({renamed: true})}; };",
+        "globalThis.document = {createElement: () => (made = {",
+        "  attrs:{}, value:'', className:'', type:'',",
+        "  setAttribute(k, v){ this.attrs[k] = v; },",
+        "  focus(){}, select(){}})};",
+        "const btn = {dataset:{}, replaced: null, replaceWith(n){ this.replaced = n; }};",
+        "let onkey = null;",
+        "globalThis.addEventListener = (kind, fn) => { if(kind === 'keydown') onkey = fn; };",
+        "globalThis.$ = () => ({hidden: false});",
+        "globalThis.showRail = () => { stopped = -1; };",
+        "HERE",
+        "ESC",
+        "(async () => {",
+        "  renameChat(btn, 'work', 'the old name');",
+        "  const shown = {tag: !!btn.replaced, value: made.value,",
+        "                 label: made.attrs['aria-label'], dialog: false};",
+        "  made.value = 'the new name';",
+        "  await made.onkeydown({key:'Escape', preventDefault(){}, stopPropagation(){}});",
+        "  const afterEscape = {asked: asked.length, drawn};",
+        "  const other = {dataset:{}, replaceWith(){}};",
+        "  renameChat(other, 'work', 'again');",
+        "  made.value = 'kept';",
+        "  await made.onkeydown({key:'Enter', preventDefault(){}});",
+        "  const afterEnter = {asked: asked.slice()};",
+        "  onkey({key:'Escape', target:{tagName:'INPUT'}, stopPropagation(){ stopped++; }});",
+        "  const whileEditing = stopped;",
+        "  onkey({key:'Escape', target:{tagName:'BUTTON'}, stopPropagation(){ stopped++; }});",
+        "  process.stdout.write(JSON.stringify({shown, afterEscape, afterEnter,",
+        "                                       whileEditing, after: stopped}));",
+        "})();",
+    ]
+    js = (chr(10).join(harness)
+          .replace("HERE", whole("async function renameChat(", chr(10) + "}"))
+          .replace("ESC", whole("addEventListener('keydown', (e) => {", "}, true);")))
+    done = subprocess.run([node, "-e", js], capture_output=True, text=True,
+                          encoding="utf-8", timeout=30)
+    assert done.returncode == 0, done.stderr
+    got = json.loads(done.stdout)
+
+    assert got["shown"]["tag"] and got["shown"]["label"] == "Name this session", (
+        "the name is not edited in the row it lives in: %r" % (got["shown"],))
+    assert got["afterEscape"] == {"asked": 0, "drawn": 1}, (
+        "Escape kept the typed name instead of leaving the old one alone: %r"
+        % (got["afterEscape"],))
+    assert got["afterEnter"]["asked"] == [{"id": "work", "name": "kept"}], (
+        "Enter did not send the new name: %r" % (got["afterEnter"],))
+    assert got["whileEditing"] == 0, (
+        "Escape while a name is being edited reached the panel, which closes "
+        "it under the person abandoning the rename: %r" % (got,))
+    assert got["after"] == -1, (
+        "Escape with no edit open no longer closes the panel: %r" % (got,))
+
+
+def test_deleting_a_conversation_takes_two_presses_and_no_dialog():
+    """The second press is the guard, and the button says what it will do. See
+    `confirms`, which is executed by the Clear test; this is the wiring.
+
+    Known-bad: call `confirm` again, or wire the press straight to the delete.
+    """
+    import re
+
+    from aihawk.ui import PAGE
+
+    code = re.sub(r"/\*.*?\*/", "", PAGE, flags=re.S)
+    assert "confirm(" not in code and "prompt(" not in code, (
+        "a native dialog is back, and it stops the live view, the transcript "
+        "and every clock on the page for as long as it is up")
+    kill = code[code.index("kill.onclick"):]
+    kill = kill[:kill.index("};") + 2]
+    assert "confirms(kill," in kill and "forgetChat" in kill, (
+        "the delete does not go through the two-step: %s" % kill)
+    assert kill.index("confirms(kill,") < kill.index("forgetChat"), (
+        "the delete happens before the control has been armed: %s" % kill)
+    assert "browsers go with it" in kill, (
+        "the armed control does not say that the browsers go with the "
+        "conversation, which is what the dialog used to say: %s" % kill)

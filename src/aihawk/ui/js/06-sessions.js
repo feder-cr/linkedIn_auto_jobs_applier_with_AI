@@ -66,11 +66,11 @@ async function drawChats(){
       showRail(false);
       if(!isHere(s.id)) location.search = '?s=' + encodeURIComponent(s.id);
     };
-    open.ondblclick = () => renameChat(s.id, s.name || s.id);
+    open.ondblclick = () => renameChat(open, s.id, s.name || s.id);
     /* ⛔ AND A KEY, because a double click is not a keyboard path and nothing
        on the screen advertises it. F2 is what renames a thing in a list
        everywhere else on this machine. */
-    open.onkeydown = (e) => { if(e.key === 'F2') renameChat(s.id, s.name || s.id); };
+    open.onkeydown = (e) => { if(e.key === 'F2') renameChat(open, s.id, s.name || s.id); };
     open.title = (s.name || s.id) + ' - F2 to rename';
     /* Drawn for the keyboard, which the native tooltip never serves: the tip
        appears on the row when its name has keyboard focus, and nowhere else. */
@@ -81,7 +81,13 @@ async function drawChats(){
     kill.type = 'button';
     kill.title = 'Delete this session and close its browsers';
     kill.setAttribute('aria-label', 'Delete ' + (s.name || s.id));
-    kill.onclick = (e) => { e.stopPropagation(); forgetChat(s.id, s.name || s.id); };
+    kill.onclick = (e) => {
+      e.stopPropagation();
+      if(!confirms(kill, ['x', 'Delete ' + (s.name || s.id)],
+                   ['sure?', 'Press again to delete ' + (s.name || s.id)
+                           + '. Its conversation and its browsers go with it.'])) return;
+      forgetChat(s.id, s.name || s.id);
+    };
     row.appendChild(kill);
     box.appendChild(row);
   }

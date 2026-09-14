@@ -66,6 +66,11 @@ $('railtab').onclick = () => showRail($('rail').hidden);
    presses to dismiss a panel STOPPED THE AGENT instead. */
 addEventListener('keydown', (e) => {
   if(e.key !== 'Escape' || $('rail').hidden) return;
+  /* ⛔ EXCEPT WHILE A NAME IS BEING EDITED, and the exception is the same rule
+     one level in: the innermost thing that owns Escape gets it. An edit open
+     inside the panel means Escape leaves the edit alone; without this the key
+     somebody presses to abandon a rename CLOSED THE PANEL under them. */
+  if(e.target && e.target.tagName === 'INPUT') return;
   e.stopPropagation();
   showRail(false);
 }, true);
@@ -83,25 +88,52 @@ addEventListener('pointerdown', (e) => {
 
 try { showRail(localStorage.getItem(RAILKEY) === '1'); } catch(err){ showRail(false); }
 
-async function renameChat(id, was){
-  const name = prompt('Name this session', was);
-  if(name === null) return;
-  /* The server refuses a name that is only spaces and says so with
-     `renamed:false`; without reading it the column simply redrew the old
-     name, which reads as the rename having been ignored. */
-  const r = await ask('/sessions/rename', {id, name}, 'Could not rename it');
-  const refused = r && !(await r.json()).renamed;
-  /* The draw first and the sentence after, in that order: `drawChats` empties
-     the panel's line, so a sentence written before it would be wiped by the
-     redraw it was written about. */
-  await drawChats();
-  if(refused) railsay('A session needs a name with something in it.');
+async function renameChat(btn, id, was){
+  /* ⛔ IN THE ROW, NOT IN A NATIVE PROMPT. See `confirms` for why no dialog on
+     this page blocks the thread any more. The input replaces the name where
+     the name already is, which is also where the eye is: Enter keeps it,
+     Escape leaves it alone, and moving away keeps it, the way renaming a thing
+     in a list behaves everywhere else.
+
+     Escape has to be caught here AND let through by the panel's own capture
+     handler, which closes the panel on that key: while an edit is open the key
+     belongs to the edit. That is the same rule the panel already applies to
+     the run - a modal takes Escape and nothing else sees it - one level in. */
+  if(btn.dataset.editing) return;
+  btn.dataset.editing = '1';
+  const box = document.createElement('input');
+  box.type = 'text'; box.className = 'nmedit'; box.value = was;
+  box.setAttribute('aria-label', 'Name this session');
+  btn.replaceWith(box);
+  box.focus(); box.select();
+  let done = false;
+  const finish = async (keep) => {
+    if(done) return;
+    done = true;
+    if(!keep) return drawChats();
+    /* The server refuses a name that is only spaces and says so with
+       `renamed:false`; without reading it the column simply redrew the old
+       name, which reads as the rename having been ignored. */
+    const r = await ask('/sessions/rename', {id: id, name: box.value},
+                        'Could not rename it');
+    const refused = r && !(await r.json()).renamed;
+    /* The draw first and the sentence after, in that order: `drawChats` empties
+       the panel's line, so a sentence written before it would be wiped by the
+       redraw it was written about. */
+    await drawChats();
+    if(refused) railsay('A session needs a name with something in it.');
+  };
+  box.onkeydown = (e) => {
+    if(e.key === 'Enter'){ e.preventDefault(); finish(true); }
+    else if(e.key === 'Escape'){ e.preventDefault(); e.stopPropagation(); finish(false); }
+  };
+  box.onblur = () => finish(true);
 }
 
+
 async function forgetChat(id, name){
-  /* The browsers go with it, and that is worth saying before it happens rather
-     than after: a session can be holding a logged-in engine. */
-  if(!confirm('Delete "' + name + '"? Its conversation and its browsers go with it.')) return;
+  /* That the browsers go with it is said on the button, by the press that
+     arms it: see `confirms`. */
   /* ⛔ AND THE ANSWER IS READ. The server REFUSES to delete a session whose
      agent is mid-run, and answers 200 with `forgotten:false`. Ignoring the
      body meant confirming a delete, being navigated away, and leaving the

@@ -92,6 +92,10 @@
 #fresh:hover:not([aria-disabled="true"]){ background:var(--hover); color:var(--fg) }
 #fresh:active:not([aria-disabled="true"]){ background:var(--top) }
 #fresh[aria-disabled="true"]{ cursor:default }
+/* Armed by a first press, and saying so: the sentence a native dialog used to
+   carry is on the control now, in its label and its tooltip. */
+#fresh[data-armed]{ color:var(--err); border-color:var(--err-edge);
+                    background:var(--err-fill) }
 
 /* ⛔ `inert` HAS NO LOOK, AND A CONTROL THAT CANNOT BE USED MUST NOT LOOK
    USABLE. This page already spells that `opacity:.3` on a disabled button, and
