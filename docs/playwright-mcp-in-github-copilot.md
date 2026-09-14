@@ -60,7 +60,7 @@ crossing it means some of them stop being available without a message that says
 so.
 
 The size of one browser server, measured on ours on 2026-09-13: **16 tools,
-8,953 characters of description, 3,192 tokens per turn** once each tool's
+8,978 characters of description, 3,192 tokens per turn** once each tool's
 argument schema is counted with it. Register two browser servers
 in an editor that already has a file server and a search server and you are
 spending a meaningful slice of the context window on tool descriptions before

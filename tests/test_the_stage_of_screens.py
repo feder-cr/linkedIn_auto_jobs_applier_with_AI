@@ -51,7 +51,7 @@ def on_stage(browsers, grid=1, pinned=None, focus=""):
 
 
 def up(*ids):
-    return [{"id": i, "running": True, "urls": ["http://x/"]} for i in ids]
+    return [{"id": i, "urls": ["http://x/"]} for i in ids]
 
 
 FIRST_CUT = "const CHROME ="
@@ -97,15 +97,23 @@ def test_the_watched_one_comes_first_so_clicking_brings_it_to_the_front():
     assert on_stage(up("a", "b", "c", "d"), grid=2, pinned="d") == ["d", "a"]
 
 
-def test_a_browser_that_is_not_running_is_never_given_a_screen():
-    """Asking a declared browser for a picture STARTS it - 800 MB and seven
-    seconds to fill a tile nobody asked for. The rule the single pane already
-    followed, kept now that there are four of them.
+def test_every_browser_the_server_lists_gets_a_screen():
+    """⛔ THE FILTER THIS PAGE USED TO CARRY IS GONE WITH THE FLAG IT READ.
+    A `running: false` row meant a browser declared and not started, and
+    drawing it would have asked for a picture and STARTED it - 800 MB and
+    seven seconds for a tile nobody asked for. Since 0.53.0 there is no such
+    row: the server lists what is open, drops what has gone, and the flag it
+    still sent was true on every row it could produce until 0.54.0.
 
-    Known-bad: drop the `b.running` filter.
+    So the page takes the rows as they come, and what keeps the expensive
+    case away is the SERVER (`test_open_first.py`: the listing drops a
+    browser whose engine is gone), not a filter here.
+
+    Known-bad: filter the fleet on a field, any field, that the answer does
+    not carry - every screen disappears.
     """
-    fleet = up("a") + [{"id": "z", "running": False, "urls": []}] + up("b")
-    assert on_stage(fleet, grid=2) == ["a", "b"]
+    assert on_stage(up("a", "b"), grid=2) == ["a", "b"]
+    assert on_stage(up("a"), grid=2) == ["a"]
 
 
 def test_the_stage_never_holds_more_than_the_layout_asks_for():

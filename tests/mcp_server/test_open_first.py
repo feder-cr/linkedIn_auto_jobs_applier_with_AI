@@ -348,6 +348,13 @@ async def test_the_listing_says_what_is_open_and_the_sentence_when_nothing_is(wo
     assert [r["focused"] for r in rows] == [True, False]
     assert rows[0]["url"] == "https://example.com/" and rows[0]["urls"] == ["https://example.com/"]
     assert rows[1]["urls"] == []
+    # ⛔ THE WHOLE ROW, BECAUSE A FIELD NOBODY NEEDS IS A BRANCH SOMEBODY WILL
+    # WRITE. `running` sat here until 0.54.0 saying `true` on every row this
+    # can produce - only open browsers are listed, and one whose engine has
+    # gone is dropped - and the page branched on it in three places, over a
+    # case the answer cannot contain.
+    assert set(rows[0]) == {"id", "focused", "url", "urls"}, (
+        "a row carries something other than what a reader needs: %r" % rows[0])
 
 
 async def test_status_reports_the_person_and_the_page_or_the_sentence(work):

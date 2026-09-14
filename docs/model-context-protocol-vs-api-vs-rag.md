@@ -46,7 +46,7 @@ Not once at registration. Every turn.
 
 Enumerated from this project's own browser server on 2026-09-13 and counted
 with a tokenizer rather than a characters-per-token rule of thumb: **16 tools,
-8,953 characters of description, 3,192 tokens on every single turn.** A
+8,978 characters of description, 3,192 tokens on every single turn.** A
 forty-turn session spends around 128,000 tokens restating what the tools are,
 before a page has been read.
 

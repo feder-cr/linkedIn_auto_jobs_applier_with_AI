@@ -3,9 +3,15 @@
    then the rest as the server lists them. So clicking any screen or any chip
    brings that browser to the front, and at one-up that means it fills the
    stage - which is what "click it and go to another screen" means. */
+/* ⛔ NO FILTER ON THE ROWS: EVERY BROWSER THE SERVER LISTS IS ONE THAT IS
+   OPEN. There used to be a `running` flag and this filtered on it, from the
+   days when a session could hold a browser that was declared and not
+   started. Since 0.53.0 there is no such thing, the flag was `true` on every
+   row the server could produce, and it went in 0.54.0 - so a filter here
+   would be a branch on a case the answer cannot contain. */
 function onStage(){
   const w = watched();
-  const live = stage.fleet.filter(b => b.running);
+  const live = stage.fleet;
   const first = live.filter(b => b.id === w);
   return first.concat(live.filter(b => b.id !== w)).slice(0, stage.grid);
 }
@@ -126,7 +132,7 @@ async function drawFleet(){
      needed, `support`: two screens when the helper is up, one when it is not,
      and nothing for a person to set. A control that chose between layouts of
      the same single screen is the defect this page has written down twice. */
-  stage.grid = stage.fleet.filter(b => b.running).length >= 2 ? 2 : 1;
+  stage.grid = stage.fleet.length >= 2 ? 2 : 1;
   drawStage();
 }
 

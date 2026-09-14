@@ -39,11 +39,10 @@ class _Tool:
 FLEET = {
     "focus": "main", "limit": 2,
     "browsers": [
-        {"id": "main", "running": True, "focused": True, "urls": ["http://a/"]},
-        {"id": "posta", "running": True, "focused": False, "urls": ["http://b/"]},
-        {"id": "dormiente", "running": False, "focused": False, "urls": []},
+        {"id": "main", "focused": True, "urls": ["http://a/"]},
+        {"id": "posta", "focused": False, "urls": ["http://b/"]},
     ],
-    "note": "3 of 2 browsers.",
+    "note": "2 of 2 browsers.",
 }
 
 
@@ -132,7 +131,7 @@ async def test_the_workspace_is_read_from_the_server_like_any_other_client():
 
     got = client.get("/live/browsers?s=lavoro").json()
 
-    assert [b["id"] for b in got["browsers"]] == ["main", "posta", "dormiente"]
+    assert [b["id"] for b in got["browsers"]] == ["main", "posta"]
     assert got["focus"] == "main" and got["limit"] == 2
     assert any(name == "browser_list" for name, _ in link.calls)
 
@@ -144,10 +143,17 @@ async def test_the_workspace_asks_the_one_question_that_starts_nothing():
     starts nothing - that is its promise and there is a test for it in the
     server - so the workspace asks always.
 
-    Copying the guard looked prudent and was a bug: a session reopened after a
-    restart has browsers it DECLARED and no instruction yet, so the workspace
-    would have been empty in exactly the case the declarations exist for, and
-    the panes offering to wake them would never have been drawn.
+    Copying the guard looked prudent and was a bug: it made the workspace empty
+    for a conversation that had opened a browser and then been reloaded - the
+    browsers are the SERVER's and outlive the page, so what this conversation
+    has asked for is not what it holds.
+
+    ⛔ THE CASE IT WAS FIRST WRITTEN FOR IS GONE, and the test is kept for the
+    one that remains. It used to be about a session reopened after a restart,
+    whose browsers were DECLARED and not started: since 0.53.0 there is no
+    such state, a browser is open or it is not there. What is still true, and
+    still worth a test, is that drawing the workspace asks exactly one
+    question and that question starts nothing.
 
     Known-bad: put `if not seen.link.touched: return empty` back at the top of
     the browsers route.
@@ -160,9 +166,9 @@ async def test_the_workspace_asks_the_one_question_that_starts_nothing():
 
     got = client.get("/live/browsers?s=mai-usata").json()
 
-    assert [b["id"] for b in got["browsers"]] == ["main", "posta", "dormiente"], (
-        "a session that has issued no instruction was shown no panes, so a "
-        "reopened session cannot offer to wake the browsers it declared")
+    assert [b["id"] for b in got["browsers"]] == ["main", "posta"], (
+        "a conversation that has asked nothing was shown no panes, while the "
+        "server holds browsers it opened before the page was reloaded")
     assert [name for name, _ in link.calls] == ["browser_list"], (
         "drawing the workspace called something other than the question that "
         "starts nothing: %r" % link.calls)
