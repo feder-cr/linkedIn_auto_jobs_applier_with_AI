@@ -276,6 +276,25 @@ async def test_reopening_gives_the_browsers_back_without_starting_one(registry,
         "reopening a session STARTED its browsers: %r" % reg.ids())
 
 
+def test_composing_an_address_reads_nothing(registry, restarted, monkeypatch):
+    """`key` is a string, not an entry point. Until 0.52.0 it read the saved
+    file the first time it was called, so a test module that composed an
+    address at import restored a session at import - the class the suite's
+    conftest exists to keep out, made one step further along.
+
+    Known-bad: `self.restore()` back at the top of `Work.key`.
+    """
+    restarted()
+    reads = []
+    monkeypatch.setattr(store, "load", lambda sid: (reads.append(sid), None)[1])
+
+    assert server.work.key() == "default/main"
+    assert server.work.key("support") == "default/support"
+
+    assert reads == [], "composing an address read the saved session"
+    assert server.work.restored is False
+
+
 async def test_a_reopened_browser_comes_back_as_the_person_it_was(registry, restarted):
     """A declaration that did not carry the identity would be a list of names.
 
@@ -286,6 +305,10 @@ async def test_a_reopened_browser_comes_back_as_the_person_it_was(registry, rest
     await server.browser_open(seed=4242)
 
     reg = restarted(seed=1234)  # the environment would give a different person
+    # Entered explicitly: since 0.52.0 `key` composes an address and nothing
+    # else, and it is the entry points of the piece of work that read the
+    # file. A client that simply navigates enters through `ready`.
+    server.work.restore()
     session = await reg.ensure(server.work.key())
 
     assert session.kwargs["seed"] == 4242, (
@@ -565,3 +588,23 @@ async def test_and_the_engine_is_still_never_written_into_the_file(registry,
     assert "binary_path" not in saved["browsers"]["main"], (
         "the session file carries a path that means nothing on another "
         "machine: %r" % saved["browsers"]["main"])
+
+
+async def test_the_helper_inherits_the_exit_of_a_main_that_has_not_woken_yet(registry, restarted):
+    """The first command after a restart can be `browser_open(support)`, and
+    the helper must still come out through `main`'s exit - the one the saved
+    file declares, not the one the environment would give.
+
+    Known-bad: take `self.restore()` out of `Work.open`. `main` is then not
+    declared when the helper asks about it, and the helper takes the
+    environment's exit; every other test still passes because something else
+    entered the piece of work first.
+    """
+    await server.browser_open(seed=4242, proxy="socks5://10.0.0.1:1080")
+    reg = restarted(seed=1234)
+
+    await server.browser_open(browser="support")
+
+    assert reg.peek("default/support").kwargs["proxy"]["server"] == "socks5://10.0.0.1:1080", (
+        "the helper did not inherit the exit of a main it had not woken yet: %r"
+        % reg.peek("default/support").kwargs.get("proxy"))
