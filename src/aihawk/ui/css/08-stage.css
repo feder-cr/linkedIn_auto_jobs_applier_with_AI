@@ -18,10 +18,9 @@
 #stage{ flex:1; min-height:0; padding:var(--s3); display:grid; gap:var(--s3) }
 #stage[data-grid="1"]{ grid-template-columns:1fr }
 #stage[data-grid="2"]{ grid-template-columns:1fr 1fr }
-/* Three on a 2x2 with one slot empty, because three equal screens and a gap
-   is what a control room does: the alternative makes one of them special. */
-#stage[data-grid="3"],
-#stage[data-grid="4"]{ grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr }
+/* One or two, and no template for more: a session holds `main` and
+   `support`, so there is no third screen to lay out. The 2x2 templates for
+   three and four stood here until 0.52.0, for layouts no fleet could fill. */
 
 .screen{ container-type:size; min-width:0; min-height:0;
          display:grid; place-items:center; overflow:hidden;
