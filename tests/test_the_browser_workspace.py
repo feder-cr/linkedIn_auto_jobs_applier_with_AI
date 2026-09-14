@@ -113,7 +113,7 @@ def _app():
         return link
 
     sessions._open_link = _open_link
-    return link, sessions, TestClient(build_app(link, sessions))
+    return link, sessions, TestClient(build_app(sessions))
 
 
 # --- what the page is told to draw ------------------------------------------

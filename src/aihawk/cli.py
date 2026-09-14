@@ -164,7 +164,6 @@ def ui(openrouter_key, model, host, port, proxy, seed, headed, binary, profile_d
     # the second would give every session in the column the same memory, so
     # asking one thing in a session would answer with another session's work.
     client = make_client(key)
-    label = mdl
     click.echo("model    %s via %s" % (mdl, BASE_URL))
 
     opts = {"proxy": proxy, "seed": seed, "headed": headed,
@@ -174,7 +173,7 @@ def ui(openrouter_key, model, host, port, proxy, seed, headed, binary, profile_d
         import uvicorn
 
         sessions = Sessions(opts, key, lambda: OpenRouterBrain(client, mdl),
-                            model_label=label)
+                            model_label=mdl)
         # ⛔ THE DEFAULT CONVERSATION IS STARTED EAGERLY, EVERY OTHER ONE
         # LAZILY. Every conversation spawns its own server now, on first use -
         # `Sessions.get` - and the interface used to open ONE connection at
@@ -185,7 +184,7 @@ def ui(openrouter_key, model, host, port, proxy, seed, headed, binary, profile_d
         default = await sessions.get(DEFAULT_CHAT_ID)
         click.echo("server   connected, %d tools" % len(default.link.tools))
         click.echo("open     http://%s:%d" % (host, port))
-        app = build_app(default.link, sessions)
+        app = build_app(sessions)
         server = uvicorn.Server(uvicorn.Config(app, host=host, port=port,
                                                log_level="warning"))
         try:

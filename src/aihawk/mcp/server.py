@@ -18,8 +18,8 @@ they were removed because the case they serve is better served by `support` -
 a second tab carries the identity's cookies and fingerprint to the second
 site, which is the one thing the two browsers exist to keep apart.
 
-Config comes from STEALTHFOX_* env vars. `browser_open` starts a browser lazily
-if nothing has, exactly as before.
+Config comes from STEALTHFOX_* env vars. A command starts a browser when none
+is running; a read does not. `work.py` is where that rule lives.
 
 Every tool here is a wrapper. The operations live in `actions.py` and the
 browsers live in `registry.py`, so every client drives them through exactly
@@ -51,11 +51,9 @@ from mcp.server.fastmcp import FastMCP, Image
 from mcp.types import ToolAnnotations
 
 from . import NOTHING_RUNNING, __version__, actions, identity, plan, store
-from .work import (DEFAULT_BROWSER_ID, MAX_BROWSERS_PER_SESSION, REBUILT,
+from .work import (DEFAULT_BROWSER_ID, MAX_BROWSERS_PER_SESSION,
+                   NO_BROWSER_OPEN, NOTHING_TO_READ, REBUILT,
                    SUPPORT_BROWSER_ID, Work)
-
-# Kept for callers that imported it from here. The implementation moved.
-_json_capped = actions.json_capped
 
 #: ⛔ WHERE THIS PROCESS'S OWN PIECE OF WORK COMES FROM, AND THE ONLY PLACE
 #: THAT KNOWS IT EXISTS. Read from the environment ONCE, exactly like
@@ -128,8 +126,6 @@ def _close_sessions_at_exit() -> None:
     except Exception:
         pass
 
-
-atexit.register(_close_sessions_at_exit)
 
 
 # The ladder, stated once. Each tool's own description says what that tool does;
@@ -323,6 +319,7 @@ async def browser_open(browser: Browser | None = None, seed: int | None = None,
         # must not cost somebody the browser they already had.
         raise ValueError("refused: %s" % exc)
     settings = chosen.kwargs
+    exit_note = chosen.exit
 
     at = work.key(role)
     main_config = work.registry.config(work.key())
@@ -345,6 +342,7 @@ async def browser_open(browser: Browser | None = None, seed: int | None = None,
         settings.pop("proxy", None)
         if main_config.get("proxy"):
             settings["proxy"] = main_config["proxy"]
+        exit_note = "this machine's own address, the same as main"
     try:
         await work.registry.restart(at, **settings)
     except Exception as exc:
@@ -360,8 +358,9 @@ async def browser_open(browser: Browser | None = None, seed: int | None = None,
             "from this machine knowing that is what you are doing."
             % (role, exc))
 
-    work.remember()
-    return "the %s browser is open. %s" % (role, plan.describe(work.registry.config(at) or {}))
+    return "the %s browser is open. %s" % (role, plan.describe(
+        settings, seed_from=chosen.seed_from, exit_note=exit_note,
+        warnings=chosen.warnings))
 
 
 @mcp.tool(annotations=_says("Close a browser", destructive=True, open_world=False))
@@ -378,7 +377,6 @@ async def browser_close(browser: Browser | None = None) -> str:
     existed = await work.registry.forget(work.key(name))
 
     left = work.roles()
-    work.remember()
     if not existed:
         return "the %s browser is not open." % name
     return ("the %s browser is closed. Still open: %s."
@@ -442,9 +440,7 @@ async def browser_list() -> str:
         "focus": here,
         "limit": MAX_BROWSERS_PER_SESSION,
         "browsers": rows,
-        "note": ("no browser open yet. The next tool that needs a page will open "
-                 "one, or call browser_open to choose who it is."
-                 if not rows else
+        "note": (NO_BROWSER_OPEN if not rows else
                  "%d of %d browsers. Commands that name none go to %s."
                  % (len(rows), MAX_BROWSERS_PER_SESSION, here)),
     })
@@ -477,9 +473,7 @@ async def browser_status(browser: Browser | None = None) -> str:
     at = work.key(browser)
     config = work.registry.config(at)
     if config is None:
-        return ("no browser is running yet, so there is no identity to "
-                "report. The next tool that needs a page will start one, or "
-                "call browser_open to choose who it is.")
+        return NOTHING_TO_READ % (browser or DEFAULT_BROWSER_ID)
 
     session = work.registry.peek(at)
     if session is None:
@@ -646,7 +640,7 @@ async def browser_watch(browser: Browser | None = None) -> Image:
         # refuse to import. A refusal reaches a client as an error result
         # carrying the reason, which every client already handles.
         raise RuntimeError(NOTHING_RUNNING)
-    jpeg = await actions.watch_jpeg(session)
+    jpeg = await session.watch_frame()
     return Image(data=jpeg, format="jpeg")
 
 
@@ -770,6 +764,7 @@ def main() -> None:
         # defaults had never been asked for at the same time; the first person
         # to try would have got a bind error with no hint of why.
         mcp.settings.port = int(os.environ.get("STEALTHFOX_MCP_PORT", "8766"))
+        atexit.register(_close_sessions_at_exit)
         mcp.run(transport="streamable-http")
     else:
         _close_on_lifespan_exit = True

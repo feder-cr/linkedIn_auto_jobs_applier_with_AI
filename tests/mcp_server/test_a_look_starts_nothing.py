@@ -90,7 +90,7 @@ async def test_asking_for_the_window_of_a_browser_that_is_not_running_starts_not
     from "the capture is broken", and those are a quiet idle state and a
     sentence somebody reads.
 
-    Known-bad: `await actions.watch_jpeg(await ready(...))`.
+    Known-bad: `await (await ready(...)).watch_frame()`.
     """
     with pytest.raises(Exception) as refused:
         await server.browser_watch()

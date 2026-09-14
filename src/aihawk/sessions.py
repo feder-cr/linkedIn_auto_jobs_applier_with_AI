@@ -167,14 +167,16 @@ class Sessions:
         rather than into the routes that ask it.
 
         Each half is asked of whoever owns it: what is in memory of this
-        registry, what is on disk of the store. The default is always known
+        registry, what is on disk of the store. On disk means the FILE is
+        there, not that it parses: `get` reads it once, right after, and
+        reading it here as well was the same file parsed twice per request. The default is always known
         because it is the conversation a page with no id gets, and on a fresh
         install nothing has written it down yet.
         """
         at = session_id or DEFAULT_CHAT_ID
         return (at == DEFAULT_CHAT_ID or at in self._live
-                or chats.load_chat(at) is not None
-                or store.load(at) is not None)
+                or chats.chat_path(at).is_file()
+                or store.path_of(at).is_file())
 
     async def rename(self, session_id: str, name: str) -> bool:
         clean = " ".join((name or "").split())[:80]
