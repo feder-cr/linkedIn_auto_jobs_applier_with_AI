@@ -296,8 +296,24 @@ async function ask(path, body, whatFailed){
    not lost - it moves onto the control itself, where it is read by the eye and
    by a screen reader from the label.
 
-   Disarmed after five seconds, because a control left armed is a control that
-   will be pressed by somebody who has forgotten why it looks like that. */
+   ⛔ AND IT DISARMS WHEN THE CONTROL LOSES THE FOCUS, NOT AFTER A NUMBER OF
+   SECONDS. The first version gave it five, on the reasoning that a control
+   left armed is one that gets pressed by somebody who has forgotten why it
+   looks like that - which is the right worry and was the wrong remedy. A press
+   on a control that has quietly disarmed ARMS IT AGAIN, so anybody slower than
+   the timer can never reach the second press at all: measured while driving
+   the running page, three presses and nothing happened, each of them more than
+   five seconds after the last. And the reading is worse than the driving. The
+   armed label is a sentence - `Press again to clear. The agent forgets
+   everything you have told it. Its browsers stay open.` - which a screen
+   reader takes some seven seconds to say, so it disarmed itself midway through
+   announcing what the next press would do, locking out exactly the person who
+   needed the sentence.
+
+   A press moves the focus to what was pressed, so leaving it is what says the
+   moment has passed - for a pointer and for a keyboard alike. There is no
+   number to choose, which is better than choosing a new one: the worry was
+   never about TIME, it was about attention having moved on. */
 const arming = new WeakMap();
 function dress(btn, how, armed){
   btn.textContent = how[0];
@@ -306,12 +322,17 @@ function dress(btn, how, armed){
   if(armed) btn.dataset.armed = '1'; else delete btn.dataset.armed;
 }
 function confirms(btn, resting, asking){
-  const waiting = arming.get(btn);
-  if(waiting){ clearTimeout(waiting); arming.delete(btn);
-               dress(btn, resting, false); return true; }
+  if(arming.get(btn)){ disarm(btn); return true; }
   dress(btn, asking, true);
-  arming.set(btn, setTimeout(() => { arming.delete(btn); dress(btn, resting, false); }, 5000));
+  arming.set(btn, resting);
+  btn.addEventListener('blur', () => disarm(btn), {once: true});
   return false;
+}
+function disarm(btn){
+  const resting = arming.get(btn);
+  if(!resting) return;
+  arming.delete(btn);
+  dress(btn, resting, false);
 }
 
 /* ⛔ THE ONLY UNGUARDED DESTRUCTIVE CONTROL, AND IT SAT IN THE PERMANENT

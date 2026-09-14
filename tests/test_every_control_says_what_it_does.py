@@ -100,7 +100,8 @@ def test_clear_explains_itself_instead_of_going_dead():
     paint = whole("function paint(){", chr(10) + "}")
     twostep = (whole("const arming = new WeakMap();", ";" + chr(10))
                + whole("function dress(btn, how, armed){", chr(10) + "}") + chr(10)
-               + whole("function confirms(btn, resting, asking){", chr(10) + "}"))
+               + whole("function confirms(btn, resting, asking){", chr(10) + "}") + chr(10)
+               + whole("function disarm(btn){", chr(10) + "}"))
     click = whole("fresh.onclick = () => {", chr(10) + "};")
     harness = [
         "const what = {textContent:''};",
@@ -109,8 +110,9 @@ def test_clear_explains_itself_instead_of_going_dead():
         "globalThis.go = {disabled:false, dataset:{}, setAttribute(){}};",
         "globalThis.halt = {hidden:true};",
         "globalThis.fresh = {attrs:{}, dataset:{}, textContent:'Clear', title:'',",
+        "                    listeners:[], addEventListener(k, fn){ this.listeners.push([k, fn]); },",
+        "                    blur(){ for(const [k, fn] of this.listeners.splice(0)) if(k === 'blur') fn(); },",
         "                    setAttribute(k, v){ this.attrs[k] = v; }};",
-        "globalThis.setTimeout = () => 1; globalThis.clearTimeout = () => {};",
         "let said = [], asked = [];",
         "globalThis.orphan = (k, t) => said.push(t);",
         "globalThis.ask = (path) => { asked.push(path); };",
@@ -126,9 +128,13 @@ def test_clear_explains_itself_instead_of_going_dead():
         "const once = {asked: asked.slice(), word: fresh.textContent,",
         "              armed: !!fresh.dataset.armed, why: fresh.title};",
         "fresh.onclick();",
+        "const twiceState = {asked: asked.slice(), word: fresh.textContent,",
+        "                    armed: !!fresh.dataset.armed, disabled: !!fresh.disabled};",
+        "asked = [];",
+        "fresh.onclick(); fresh.blur(); fresh.onclick();",
+        "const afterLeaving = {asked: asked.slice(), armed: !!fresh.dataset.armed};",
         "process.stdout.write(JSON.stringify({look, whileWorking, once,",
-        "  twice: {asked, word: fresh.textContent, armed: !!fresh.dataset.armed,",
-        "          disabled: !!fresh.disabled}}));",
+        "  twice: twiceState, afterLeaving}));",
     ]
     #: the stubs first, then the code that binds to them, then the actions:
     #: `fresh.onclick = ...` runs the moment the script is evaluated.
@@ -162,6 +168,16 @@ def test_clear_explains_itself_instead_of_going_dead():
         "the control stays armed after it has been used: %r" % (got["twice"],))
     assert got["twice"]["disabled"] is False, (
         "the control went dead rather than saying why")
+    # ⛔ AND LEAVING IT IS WHAT DISARMS IT, NOT A TIMER. The first version gave
+    # the armed state five seconds, and a press on a control that had quietly
+    # disarmed ARMS IT AGAIN - so anybody slower than the timer could never
+    # reach the second press. Measured on the running page: three presses,
+    # nothing happened. Worse by ear: the armed label takes a screen reader
+    # some seven seconds to say, so it disarmed itself midway through
+    # announcing what the next press would do.
+    assert got["afterLeaving"] == {"asked": [], "armed": True}, (
+        "the control kept its armed state after the attention moved away, or "
+        "lost it while the attention was still on it: %r" % (got["afterLeaving"],))
 
     assert "confirm(" not in CODE and "prompt(" not in CODE, (
         "a native dialog is back on this page, and it stops the live view, the "
