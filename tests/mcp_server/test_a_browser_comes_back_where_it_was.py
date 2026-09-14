@@ -21,6 +21,7 @@ import pytest
 
 from aihawk.mcp import actions, server, store
 from aihawk.mcp.work import Work
+from invisible_playwright.async_api import TargetClosedError
 
 
 class _Recording:
@@ -231,7 +232,7 @@ async def test_the_retry_path_wakes_the_same_way(registry):
     async def _once(session, *a, **k):
         if "first" not in seen:
             seen["first"] = True
-            raise RuntimeError("Target page, context or browser has been closed")
+            raise TargetClosedError("Target page, context or browser has been closed")
         return json.dumps([p["url"] for p in await session.describe_pages()])
 
     got, rebuilt = await server.work.retrying(_once)

@@ -16,7 +16,7 @@ object the action ran on.
 
 Known-bad, run before this file was trusted: `except Exception:` with no
 question asked, as it was - the first two tests go red. And `is_dead` reading
-only the text, without `_is_usable` - the last one goes red.
+only the type, without `_is_usable` - the last one goes red.
 """
 from __future__ import annotations
 
@@ -24,6 +24,7 @@ import pytest
 
 from aihawk.mcp import server
 from aihawk.mcp.work import Work
+from invisible_playwright.async_api import TargetClosedError
 
 
 class _Session:
@@ -82,15 +83,16 @@ async def test_a_refusal_is_reported_once_not_tried_twice(registry):
 
 
 async def test_a_browser_that_is_gone_is_rebuilt_as_the_same_person(registry):
-    """The recovery this function exists for, kept: the sentence a closed
-    target gives is a browser that is gone, and the action is run again on a
-    replacement with the same identity."""
+    """The recovery this function exists for, kept: the TYPE a closed target
+    raises - one class since invisible-playwright 0.15.0, for a disposed
+    object and a closed pipe alike - is a browser that is gone, and the action
+    is run again on a replacement with the same identity."""
     calls = []
 
     async def gone_then_fine(session):
         calls.append(session)
         if len(calls) == 1:
-            raise RuntimeError("Target page, context or browser has been closed")
+            raise TargetClosedError("Target page, context or browser has been closed")
         return "done"
 
     before = await server.work.ready()

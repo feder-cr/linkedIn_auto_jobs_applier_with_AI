@@ -32,6 +32,7 @@ from aihawk.mcp import actions, server
 from aihawk.mcp import work as work_module
 from aihawk.mcp.work import Work
 from aihawk.mcp.registry import BrowserRegistry
+from invisible_playwright.async_api import TargetClosedError
 
 SERVER_PY = pathlib.Path(inspect.getfile(server))
 WORK_PY = pathlib.Path(inspect.getfile(work_module))
@@ -213,7 +214,7 @@ async def test_a_rebuild_of_one_browser_leaves_the_others_alone(registry, echo,
     async def _fails_once(session, *args, **kwargs):
         if failures["left"]:
             failures["left"] -= 1
-            raise RuntimeError("Target page, context or browser has been closed")
+            raise TargetClosedError("Target page, context or browser has been closed")
         return "went"
 
     # `browser_navigate` is the one tool left that goes through `retrying`,
