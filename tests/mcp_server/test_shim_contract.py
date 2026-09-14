@@ -24,7 +24,7 @@ def test_the_names_the_shim_binds_exist():
 
     assert callable(server.main)
     assert hasattr(server.mcp, "list_tools")
-    assert hasattr(server.work.registry, "close_all")
+    assert hasattr(server.work, "close_all")
 
 
 def test_aihawk_is_the_only_command_this_package_declares():

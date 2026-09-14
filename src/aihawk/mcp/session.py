@@ -1,11 +1,19 @@
-"""One InvisiblePlaywright browser, many tabs. The browser is ALWAYS launched
-by InvisiblePlaywright, never Playwright directly, so the full stealth stack
-applies."""
+"""One InvisiblePlaywright browser and the page it drives. The browser is
+ALWAYS launched by InvisiblePlaywright, never Playwright directly, so the full
+stealth stack applies.
+
+⛔ ONE PAGE, AND NO BOOKKEEPING OF ITS OWN. Until 0.53.0 this kept a map of
+tab ids to pages, an active id, a counter that survived rebuilds, and a page
+lookup with a strict path for named tabs and a fallback for the rest - the
+machinery of the tab tools, which went on 2026-09-11 when a browser became one
+page. The context already knows its pages; the page a command drives is the
+newest live one; that is the whole of it.
+"""
 from __future__ import annotations
 
 import asyncio
 import time
-from typing import Any, Optional
+from typing import Any
 
 from ..quiet import swallow
 
@@ -20,37 +28,19 @@ class StealthSession:
         # and `plan_session`. A session now uses what it is handed and nothing
         # else; deciding is `plan.plan_session`'s job, and only its job.
         self._kwargs = kwargs
-        self._ipw: Optional[InvisiblePlaywright] = None
+        self._ipw: Any = None
         # `Any` rather than the engine's own types, which this package does not
         # resolve: an attribute left to be inferred from `None` makes every later
         # use read as an error on a type that cannot have one.
         self._browser: Any = None
         self._context: Any = None
-        self._pages: dict[str, Any] = {}
-        self._active: Optional[str] = None
-        self._counter = 0
-        # page id -> the live window capture on that tab: the latest JPEG
-        # frame and the event that says one has arrived. Started lazily by
-        # `watch_frame`, stopped with the tab.
-        self._watch: dict[str, dict[str, Any]] = {}
+        # The live window capture on a page: the latest JPEG frame and the
+        # event that says one has arrived, keyed by the page object. Started
+        # lazily by `watch_frame`, stopped with the session.
+        self._watch: dict[int, dict[str, Any]] = {}
         # The clock a frame's age is read from. An attribute so a test can move
         # time instead of sleeping through STALE_AFTER.
         self._clock = time.monotonic
-
-    def resume_numbering_after(self, highest: int) -> None:
-        """Carry tab numbering forward from a session this one replaces.
-
-        ⛔ Tab ids used to restart at `tab-1` on every rebuild, so an id a caller
-        was still holding resolved to a DIFFERENT page instead of erroring -
-        exactly what `page()` below refuses to do for a named tab, on the
-        grounds that acting on the wrong tab with nothing said is worse than an
-        error. A rebuild is common (any failure retries through one), and the
-        identity work that keeps the same person across it also keeps the caller
-        going, so the stale id is more reachable than it was, not less.
-
-        Numbering continues instead, and a stale id now names nothing.
-        """
-        self._counter = max(self._counter, highest)
 
     async def _attach(self, result) -> None:
         """`InvisiblePlaywright.__aenter__()` returns a Browser in ephemeral
@@ -67,144 +57,85 @@ class StealthSession:
         self._ipw = InvisiblePlaywright(**self._kwargs)
         await self._attach(await self._ipw.__aenter__())
 
-    async def new_page(self) -> str:
-        self._counter += 1
-        page_id = f"tab-{self._counter}"
-        page = await self._context.new_page()
-        self._pages[page_id] = page
-        self._active = page_id
-        return page_id
+    def is_alive(self) -> bool:
+        """Whether this browser can still be handed out.
 
-    def list_pages(self) -> list[str]:
-        """The tabs this session knows about, including ones it did not open.
+        Two ways it cannot, and they are different: a browser that has DIED
+        under it - the object is intact, so nothing raises until a tool
+        touches the page - and one that never finished starting, which leaves
+        the context unset. Anything unexpected while asking counts as dead:
+        the cost of dropping a good browser is one `browser_open`, and the
+        cost of keeping a bad one is an error that names nothing.
+        """
+        try:
+            if self._context is None:
+                return False
+            if self._browser is not None and not self._browser.is_connected():
+                return False
+            return True
+        except Exception:
+            return False
+
+    # --- the page ---------------------------------------------------------------
+
+    def pages(self) -> list:
+        """The live pages of the context, in the order they were opened.
 
         A page can appear without `new_page` being called - a target with
-        `_blank`, or `window.open` - and a caller that cannot name it cannot
-        act on it. Adopting live pages from the context keeps the list honest.
+        `_blank`, or `window.open` - and closed ones are left out, so a tab a
+        site closed does not come back as a handle that raises on the next
+        tool.
         """
-        if self._context is not None and hasattr(self._context, "pages"):
-            for p in self._context.pages:
-                # CLOSED pages are not adopted. Without this a tab that was
-                # just closed comes straight back under a NEW id, because
-                # `close_page` removes it from our own map while the context
-                # can still list it - and then `page()` hands the caller a
-                # handle that raises on the next tool.
-                if getattr(p, "is_closed", None) is not None and p.is_closed():
-                    continue
-                if p not in self._pages.values():
-                    self._counter += 1
-                    pid = f"tab-{self._counter}"
-                    self._pages[pid] = p
-                    if not self._active:
-                        self._active = pid
-        return list(self._pages)
+        if self._context is None:
+            return []
+        return [p for p in getattr(self._context, "pages", [])
+                if not (getattr(p, "is_closed", None) and p.is_closed())]
+
+    async def new_page(self):
+        return await self._context.new_page()
+
+    def page(self):
+        """The page a command drives: the newest live one.
+
+        Newest and not first, because a site that opens a page of its own has
+        moved the person's attention there, and acting on the one behind it
+        would be acting where nobody is looking.
+        """
+        live = self.pages()
+        if not live:
+            raise RuntimeError("this browser has no page open; browser_navigate opens one")
+        return live[-1]
 
     def where_pages_are(self) -> list[str]:
-        """The url of each tab, and nothing else.
-
-        ⛔ THE CHEAP HALF OF `describe_pages`, SPLIT OUT BECAUSE THE COST WAS
-        BEING PAID ON EVERY COMMAND. That method's own docstring says it: title
-        costs a round trip per tab and url does not. The server notes where a
-        browser is on every tool call so a session can be saved where it was,
-        and it was doing that by asking for the whole description - so every
-        action, and every frame of the live view, paid a round trip per tab for
-        a title nobody read.
-
-        ⛔ MEASURED, AND THE FIRST NUMBER I WROTE HERE WAS DEDUCED RATHER THAN
-        MEASURED. I read a low frame rate on a bench, inferred that each request
-        took 195 ms, and wrote that down. Splitting the time three ways said the
-        request was 13 ms and the low rate was the BENCH: a CSS animation in a
-        headless window repaints a few times a second, so most answers were the
-        same picture twice.
-
-        The real cost of the title, A-B-A on the same bench: 8.3 ms with urls
-        only, 29.5 ms with the title, 6.8 ms with urls again. Three and a half
-        times, on the request the live view makes twenty-five times a second.
-        """
+        """The url of each page, and nothing else: the cheap half of
+        `describe_pages`, for callers that ask on every command."""
         out = []
-        for pid in self.list_pages():
-            page = self._pages.get(pid)
-            try:
-                out.append(page.url if page is not None else "")
-            except Exception:
-                out.append("")
+        for page in self.pages():
+            with swallow("a page that cannot say where it is answers blank"):
+                out.append(page.url)
+                continue
+            out.append("")
         return out
 
     async def describe_pages(self) -> list[dict]:
-        """Each tab as id, title, url and whether it is the active one.
+        """Each page as url, title and whether it is the one a command drives.
 
-        `list_pages` answers with ids alone, which is enough for this session's
-        own bookkeeping and not enough for a caller. Choosing a tab by id with
-        no idea what is in it is choosing blind, and until 0.9.0 that is exactly
-        what the tab tool of the day handed a model, while its description
-        promised these four fields. The description was the sensible half, so
-        the data moved to meet it.
-
-        It lives here rather than in `actions` because `_pages` and `_active`
-        are this object's business: a second reader of that dict would be a
-        second place that has to be right about which tab is current.
-
-        Title costs a round trip per tab and url does not, so a page that will
+        Title costs a round trip per page and url does not, so a page that will
         not answer contributes what it can rather than failing the whole list -
-        a tab mid-navigation must not make the others unreadable.
+        a page mid-navigation must not make the others unreadable.
         """
+        live = self.pages()
         out: list[dict] = []
-        for pid in self.list_pages():
-            page = self._pages.get(pid)
-            row = {"id": pid, "active": pid == self._active, "url": "", "title": ""}
-            if page is not None:
-                with swallow("a page that cannot say where it is answers blank"):
-                    row["url"] = page.url
-                with swallow("a page that cannot say its title answers blank"):
-                    row["title"] = await page.title()
+        for page in live:
+            row = {"active": page is live[-1], "url": "", "title": ""}
+            with swallow("a page that cannot say where it is answers blank"):
+                row["url"] = page.url
+            with swallow("a page that cannot say its title answers blank"):
+                row["title"] = await page.title()
             out.append(row)
         return out
 
-    # ⛔ `select_page` STOOD HERE, AND NOTHING IN THE PRODUCT HAD CALLED IT
-    # SINCE THE TAB TOOLS WENT. It was the only way to move the active page
-    # by hand, which is exactly the capability removed when a browser became
-    # one page: what a caller may do is open, read and close, never choose.
-    # Three tests kept it alive and asserted through it - the same shape as
-    # `_focus` one layer up, which the product had stopped writing to while
-    # the fixtures went on reading it.
-    #
-    # The two properties those tests hold are still held, through the paths
-    # the product actually takes: `new_page` makes the newest page active,
-    # and `close_page` moves the flag when it closes the active one. Both
-    # have real callers, so the assertions now sit on live code.
-
-    def page(self, page_id: Optional[str] = None):
-        """The active page, or any live one, rather than a closed handle.
-
-        The recorded tab can be closed under us - by the site, or by a
-        navigation that replaced it - and returning it produces an error from
-        whatever tool touched it rather than from here. Falling back to a live
-        page from the context keeps a session usable after that.
-        """
-        pid = page_id or self._active
-        if pid is not None and pid in self._pages:
-            p = self._pages[pid]
-            if not p.is_closed():
-                return p
-
-        # A tab the caller NAMED is answered strictly. The fallback below
-        # exists so a session survives losing its active tab; applied to an
-        # explicit id it would hand back a DIFFERENT page under the name that
-        # was asked for, which is worse than an error - the caller goes on
-        # acting on the wrong tab and nothing says so.
-        if page_id is not None:
-            raise RuntimeError(f"no such tab: {page_id}")
-
-        if self._context is not None and hasattr(self._context, "pages") and self._context.pages:
-            for p in reversed(self._context.pages):
-                if not p.is_closed():
-                    self._counter += 1
-                    new_pid = f"tab-{self._counter}"
-                    self._pages[new_pid] = p
-                    self._active = new_pid
-                    return p
-
-        raise RuntimeError("this browser has no page open; browser_navigate opens one")
+    # --- the window -------------------------------------------------------------
 
     #: The bound the window frame is scaled to fit. The frame is the whole
     #: window, chrome included, so this is a ceiling on the picture handed to
@@ -218,11 +149,6 @@ class StealthSession:
     #: job that never looks at a frame should not pay for a live view: measured
     #: 2026-09-08, ten costs 257 KB/s and twenty-five costs 629. Here there IS
     #: somebody looking, so the bandwidth buys something.
-    #:
-    #: It is the last link of a chain that was slow in three places and is now
-    #: fast in all three: the engine makes what it is asked for, the wrapper
-    #: passes the request on (0.14.0, which the floor below requires), and the
-    #: page asks often enough to collect them.
     WATCH_FPS = 25
 
     #: A capture that has delivered nothing for this long is not a quiet page:
@@ -242,9 +168,8 @@ class StealthSession:
     #: what is wrong instead of showing where the browser was.
     STALE_AFTER = 2.0
 
-    async def watch_frame(self, page_id: Optional[str] = None,
-                          timeout: float = 3.0) -> bytes:
-        """The latest JPEG frame of the WINDOW the active tab lives in.
+    async def watch_frame(self, timeout: float = 3.0) -> bytes:
+        """The latest JPEG frame of the WINDOW the page lives in.
 
         `page.screenshot()` is the content viewport and can never show the
         pointer, which the engine draws in the browser chrome precisely so
@@ -254,20 +179,19 @@ class StealthSession:
         system, in the parent process, with nothing injected into the page.
 
         The capture is started on first use and kept running for the life of
-        the tab, so the frame answered here is at most a twenty-fifth of a
+        the page, so the frame answered here is at most a twenty-fifth of a
         second old - and if it is older than STALE_AFTER the capture is
-        started again, because the engine does not say when one ends. Stopped
-        with the tab in `close_page`.
+        started again, because the engine does not say when one ends.
         """
-        page = self.page(page_id)
-        pid = next(k for k, v in self._pages.items() if v is page)
-        state = self._watch.get(pid)
+        page = self.page()
+        key = id(page)
+        state = self._watch.get(key)
         if (state is not None and state["latest"]
                 and self._clock() - state["at"] > self.STALE_AFTER):
-            await self._stop_watch(pid)
+            await self._stop_watch(key)
             state = None
         if state is None:
-            state = {"latest": b"", "arrived": asyncio.Event(),
+            state = {"page": page, "latest": b"", "arrived": asyncio.Event(),
                      "at": self._clock()}
 
             def on_frame(frame: dict) -> None:
@@ -287,7 +211,7 @@ class StealthSession:
                     "the live window view needs invisible-playwright with "
                     "page.screencast and an engine from firefox-28 on: the "
                     "browser answered %s" % refused) from refused
-            self._watch[pid] = state
+            self._watch[key] = state
         if not state["latest"]:
             try:
                 await asyncio.wait_for(state["arrived"].wait(), timeout)
@@ -298,37 +222,25 @@ class StealthSession:
                 # every later look wait on a capture that cannot answer. The
                 # next look starts its own, which succeeds the moment the window
                 # can be captured again.
-                await self._stop_watch(pid)
+                await self._stop_watch(key)
                 raise RuntimeError(
                     "the window capture started but no frame arrived in "
                     "%.0f s; a minimised window is captured as nothing" % timeout)
         return state["latest"]
 
-    async def _stop_watch(self, pid: str) -> None:
-        state = self._watch.pop(pid, None)
-        page = self._pages.get(pid)
-        if state is None or page is None:
+    async def _stop_watch(self, key: int) -> None:
+        state = self._watch.pop(key, None)
+        if state is None:
             return
-        with swallow("the tab may already be gone, and the engine stops the "
+        with swallow("the page may already be gone, and the engine stops the "
                      "capture with the page either way"):
-            await page.screencast.stop()
+            await state["page"].screencast.stop()
 
-    async def close_page(self, page_id: Optional[str] = None) -> None:
-        pid = page_id or self._active
-        if pid is None or pid not in self._pages:
-            return
-        await self._stop_watch(pid)
-        with swallow("a page already gone cannot be closed twice"):
-            await self._pages[pid].close()
-        # Forgotten whether or not the close answered: a handle to a page that
-        # would not close is a handle nothing can use.
-        self._pages.pop(pid, None)
-        if self._active == pid:
-            self._active = next(reversed(self._pages), None)
+    # --- the end ----------------------------------------------------------------
 
     async def close(self) -> None:
-        for pid in list(self._pages):
-            await self.close_page(pid)
+        for key in list(self._watch):
+            await self._stop_watch(key)
         if self._context is not None:
             with swallow("a context already gone cannot be closed twice"):
                 await self._context.close()

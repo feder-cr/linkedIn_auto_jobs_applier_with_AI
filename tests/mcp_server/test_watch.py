@@ -11,7 +11,7 @@ asked. Known-bad inputs run before this file was trusted:
 
 * `watch_frame` starting the capture on EVERY call -> the "started once" test
   goes red (and a real engine would refuse the second start);
-* the capture not stopped in `close_page` -> the stop test goes red;
+* the capture not stopped in `close` -> the stop test goes red;
 * the size bound dropped -> the first test goes red, and a real 1920x1080
   window would ship a JPEG four times larger than needed on every call.
 """
@@ -73,13 +73,15 @@ class _FakeContext:
         self.pages.append(p)
         return p
 
+    async def close(self):
+        pass
+
 
 @pytest.mark.asyncio
 async def test_the_capture_starts_once_and_answers_the_latest_frame():
     s = StealthSession()
     s._context = _FakeContext()
-    pid = await s.new_page()
-    page = s.page(pid)
+    page = await s.new_page()
 
     async def feed():
         await asyncio.sleep(0.05)
@@ -98,18 +100,17 @@ async def test_the_capture_starts_once_and_answers_the_latest_frame():
 
 
 @pytest.mark.asyncio
-async def test_closing_the_tab_stops_its_capture():
+async def test_closing_the_session_stops_its_capture():
     s = StealthSession()
     s._context = _FakeContext()
-    pid = await s.new_page()
-    page = s.page(pid)
+    page = await s.new_page()
     page.screencast.deliver  # the fake exists before any frame
     asyncio.get_running_loop().call_later(
         0.02, page.screencast.deliver, b"\xff\xd8\xff x")
     await s.watch_frame()
-    await s.close_page(pid)
+    await s.close()
     assert page.screencast.stops == 1
-    assert pid not in s._watch
+    assert id(page) not in s._watch
 
 
 @pytest.mark.asyncio
@@ -129,13 +130,13 @@ async def test_an_engine_without_a_screencast_is_named_not_leaked():
     the version, not the guid."""
     s = StealthSession()
     s._context = _FakeContext()
-    pid = await s.new_page()
+    page = await s.new_page()
 
     class _Refusing:
         async def start(self, **kw):
             raise RuntimeError("no object 'artifact@3' to answer 'read'")
 
-    s.page(pid).screencast = _Refusing()
+    page.screencast = _Refusing()
     with pytest.raises(RuntimeError) as told:
         await s.watch_frame()
     assert "page.screencast" in str(told.value)
@@ -165,8 +166,7 @@ async def test_a_capture_that_went_quiet_is_started_again():
     """
     s = StealthSession()
     s._context = _FakeContext()
-    pid = await s.new_page()
-    page = s.page(pid)
+    page = await s.new_page()
     now = _timed(s)
 
     asyncio.get_running_loop().call_later(
@@ -195,8 +195,7 @@ async def test_a_quiet_page_is_not_a_quiet_capture():
     capture thread twenty-five times a second."""
     s = StealthSession()
     s._context = _FakeContext()
-    pid = await s.new_page()
-    page = s.page(pid)
+    page = await s.new_page()
     now = _timed(s)
 
     asyncio.get_running_loop().call_later(
@@ -217,8 +216,7 @@ async def test_a_restart_that_stays_silent_is_dropped_with_the_reason():
     It is stopped, the reason is said, and the next look starts its own."""
     s = StealthSession()
     s._context = _FakeContext()
-    pid = await s.new_page()
-    page = s.page(pid)
+    page = await s.new_page()
     now = _timed(s)
 
     asyncio.get_running_loop().call_later(
@@ -230,7 +228,7 @@ async def test_a_restart_that_stays_silent_is_dropped_with_the_reason():
         await s.watch_frame(timeout=0.05)
 
     assert "minimised" in str(told.value)
-    assert pid not in s._watch, "a capture that never answered was kept"
+    assert id(page) not in s._watch, "a capture that never answered was kept"
     assert page.screencast.stops == 2, "the silent restart was not stopped"
 
 
@@ -368,8 +366,7 @@ async def test_the_capture_is_asked_for_the_rate_somebody_watching_needs():
     """
     s = StealthSession()
     s._context = _FakeContext()
-    pid = await s.new_page()
-    page = s.page(pid)
+    page = await s.new_page()
     # The frame can only be delivered once the capture has started, and the
     # capture starts inside `watch_frame` - so it is fed from a task, the way
     # the first test in this file does it.

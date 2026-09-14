@@ -19,7 +19,7 @@ from starlette.routing import Route
 
 from .chat import ChatService, DEFAULT_CHAT_ID
 from .link import image_of, text_of
-from .mcp import NOTHING_RUNNING
+from .mcp import DEFAULT_BROWSER_ID, NOT_OPEN
 from .sessions import SessionGone, Sessions
 from .ui import PAGE
 
@@ -324,12 +324,13 @@ async def frame(request: Request) -> Response:
         # reason, never a 204, which would read as "nothing to look at" in the
         # one case where a person needs to read a sentence.
         reason = text_of(result) if getattr(result, "isError", False) else ""
-        if reason and NOTHING_RUNNING not in reason:
+        if reason and NOT_OPEN % (watching or DEFAULT_BROWSER_ID) not in reason:
             return JSONResponse({"error": reason[:200]}, status_code=503)
         # And one refusal is not a failure at all: a browser that is not
-        # running is nothing to look at, which is the idle pane. Compared
+        # open is nothing to look at, which is the idle pane. Compared
         # against the sentence itself rather than guessed at from its shape -
-        # the two ship in one package, so there is one string.
+        # the two ship in one package, so there is one string. A browser
+        # that is GONE is a different sentence and a 503: the pane says it.
         return Response(status_code=204)
     jpeg, mime = got
     return Response(jpeg, media_type=mime, headers={"Cache-Control": "no-store"})

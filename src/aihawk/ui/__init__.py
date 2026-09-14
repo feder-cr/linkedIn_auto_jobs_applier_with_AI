@@ -41,7 +41,6 @@ CSS_FILES = (
     "04-transcript.css",   # turns, steps, answers, rendered markdown
     "05-composer.css",     # the box you type in
     "06-browser.css",      # the browser bar and the live picture
-    "07-fleet.css",        # the strip of browsers along the bottom
     "08-stage.css",        # one screen, or two, or four
 )
 

@@ -50,7 +50,7 @@ decide deliberately rather than discovering later.
 
 **4. The size of the surface.** Tool descriptions ride in the model's context
 on every turn, argument schemas included. Measured on our own server: 16
-tools, 9,145 characters of description, 3,192 tokens per turn. A server
+tools, 8,953 characters of description, 3,192 tokens per turn. A server
 advertising a hundred tools is asking for several times that, forever.
 [How many MCP tools is too many](how-many-mcp-tools-is-too-many.md) has the
 arithmetic.

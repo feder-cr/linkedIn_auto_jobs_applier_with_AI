@@ -12,20 +12,29 @@ try:
 except PackageNotFoundError:  # running from a source tree, not installed
     __version__ = "0+unknown"
 
-#: What a LOOK at a browser that is not running is refused with.
-#:
-#: ⛔ ONE SENTENCE IN ONE PLACE, AND IT LIVES HERE RATHER THAN BESIDE THE TOOL
-#: THAT SAYS IT, because its two readers are far apart and only one of them is
-#: a person. A model acts on the words; the live pane has to tell "there is
-#: nothing to look at" - draw the idle state, quietly - apart from "the capture
-#: is broken", which is a sentence somebody needs to read. The pane compares
-#: against this, so the two cannot drift; put in `server.py` it would drag the
-#: whole server object into the interface's process just to read a string.
-#:
-#: Interface and server are always the same build: the link launches
-#: `sys.executable -m aihawk`, so there is no version skew to defend against.
-NOTHING_RUNNING = ("no browser is running here, so there is no window to "
-                   "watch. browser_list says which browsers this session has, "
-                   "and any command aimed at one starts it.")
+#: The browser a caller means when it names nothing.
+DEFAULT_BROWSER_ID = "main"
 
-__all__ = ["__version__", "NOTHING_RUNNING"]
+#: The other one: the helper beside the identity. See `work.py` for why there
+#: are exactly two.
+SUPPORT_BROWSER_ID = "support"
+
+#: ⛔ THE TWO SENTENCES EVERY TOOL CAN ANSWER INSTEAD OF WORKING, AND THEY LIVE
+#: HERE RATHER THAN BESIDE THE CODE THAT SAYS THEM, because their readers are
+#: far apart and only one of them is a person. A model acts on the words. The
+#: live pane has to tell "there is nothing to look at" - draw the idle state,
+#: quietly - apart from "something is wrong", which is a sentence somebody
+#: reads; it compares against the first sentence, so the two cannot drift, and
+#: put in `work.py` it would drag the engine's wrapper into the interface's
+#: process just to read a string.
+#:
+#: Until 0.53.0 there were five sentences for "nothing is running" and none
+#: for "it died", because a tool would START a browser when none was running
+#: and REBUILD one that had died. Neither happens now: a browser is opened
+#: with `browser_open` and with nothing else, and when it is gone the model is
+#: told so and told what to do. That is the whole lifecycle.
+NOT_OPEN = "the %s browser is not open. Call browser_open to open it."
+GONE = ("the %s browser is gone: it closed or crashed. Call browser_open to "
+        "open it again; it comes back as the same person.")
+
+__all__ = ["__version__", "DEFAULT_BROWSER_ID", "SUPPORT_BROWSER_ID", "NOT_OPEN", "GONE"]

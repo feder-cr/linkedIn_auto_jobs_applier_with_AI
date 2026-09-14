@@ -251,38 +251,6 @@ def test_a_screen_is_built_as_a_frame_with_its_name_on_it():
         "the name on the picture lost the mark that says the agent is here"
 
 
-def test_a_browser_with_no_picture_is_a_name_and_not_a_picture_frame():
-    """⛔ SIX STOPPED BROWSERS DREW SIX EMPTY PICTURE FRAMES. 168 by 133 each,
-    the words `not up` in the middle, 133px of the pane spent on a gallery of
-    things that are not there. A thing with no image is a name, and a name is a
-    chip.
-
-    ⛔ AND THE PICTURE FRAME IS GONE FOR RUNNING BROWSERS TOO, since 0.52.0:
-    the stage holds every running browser, so the strip never has one to
-    preview, and the card that used to hold an `<img>` here was the shape of a
-    case that could not occur. A chip says the name and, for the stopped one,
-    that it is not running; the agent's mark goes on whichever it is driving.
-
-    Known-bad, two: give the chip an `<img>`; drop the ring that says a
-    browser is not running.
-    """
-    got = run("""
-      const stopped = chipFor({id: 'b-off', running: false, urls: []});
-      const running = chipFor({id: 'b-two', running: true, urls: ['http://x/']});
-      process.stdout.write(JSON.stringify({stopped: tree(stopped), running: tree(running)}));
-    """, one("chipFor"))
-    assert got["stopped"]["cls"] == "chip", \
-        "a stopped browser is drawn as %r" % got["stopped"]["cls"]
-    assert [k["cls"] for k in got["stopped"]["kids"]] == ["off", "id"], \
-        "the chip of a stopped browser does not say so: %r" % got["stopped"]["kids"]
-    assert got["stopped"]["kids"][1]["text"] == "b-off", "the chip does not carry the name"
-    assert got["running"]["cls"] == "chip", \
-        "a running browser is drawn as %r" % got["running"]["cls"]
-    assert [k["cls"] for k in got["running"]["kids"]] == ["id", "dot"], \
-        "the running one is missing the agent's mark, or carries a picture: %r" \
-        % got["running"]["kids"]
-
-
 def test_an_empty_stage_says_what_to_do_about_being_empty():
     """There is no button that opens a browser - they are opened by asking, on
     purpose - so the empty stage is the one place that has to say so, and to

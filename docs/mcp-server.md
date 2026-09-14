@@ -165,26 +165,26 @@ Tool names mirror the Microsoft Playwright MCP, so prompts written for it work
 here too, with one deliberate departure: **there are no tab tools.** Three
 groups: the two browsers, reading the page, and acting on it.
 
-**A look does not open a browser.** From 0.48.0 the reading tools -
-`browser_snapshot`, `browser_read_text`, `browser_read_html`,
-`browser_take_screenshot`, `browser_evaluate`, `browser_watch` and
-`browser_list` - all need one that is already running, and say so plainly if
-none is. Sending a command opens it: `browser_navigate` is enough, and
-`browser_open` is the one to use when you want to choose the identity, the
-exit or the profile. Before 0.48.0 a read started a browser on your behalf,
-which meant a question could launch the engine and reach the network while the
-tool told your client it only read.
+**Open first.** From 0.53.0 `browser_open` is the only tool that opens a
+browser, and every other tool needs one that is open: if it is not, the tool
+answers `the main browser is not open. Call browser_open to open it.` and
+does nothing else. With no arguments `browser_open` brings back the person
+this session already was - same seed, same exit, same profile - so a
+conversation reopened tomorrow, or an assistant reconnecting, is the same
+person without having to know the seed; pass a seed, a proxy or a profile
+to be somebody else. Before 0.53.0 a command started a browser on your
+behalf, a read refused, and a browser that had died was rebuilt underneath
+the action and retried: three behaviours where one sentence does.
 
-**A page that refuses does not cost the browser.** From 0.50.0 a navigation
-that fails - a domain that does not resolve, a page that times out - is
-reported as it happened, on the browser you have, with its cookies and its
-pages intact. Only a browser that is actually gone is rebuilt as the same
-identity, and the command retried once. Before 0.50.0 any failure closed the
-browser and opened a new one to try again, which failed the same way a browser
-later. From 0.51.0 a rebuild is said: the answer starts with "the main browser
-had died and was reopened as the same person, on the page it was on", so a
-model knows an ephemeral browser's cookies are gone and a login may need
-redoing.
+**A page that refuses does not cost the browser, and a browser that is gone
+is said, not replaced.** A navigation that fails - a domain that does not
+resolve, a page that times out - is reported as it happened, on the browser
+you have, with its cookies and its pages intact. A browser that has actually
+gone - the window closed by hand, the engine crashed - answers `the main
+browser is gone: it closed or crashed. Call browser_open to open it again;
+it comes back as the same person.` and is forgotten, so the next
+`browser_open` starts clean. `browser_close` frees the engine and keeps who
+the browser was, for the same reason.
 
 If the tools do not appear in your client, the fastest way to tell a broken
 registration from a broken server is to skip the client:
@@ -240,16 +240,16 @@ server serves exactly one session for its whole life.
 | Tool | Arguments | What it does |
 |---|---|---|
 | `browser_open` | `browser`, `seed`, `proxy`, `profile`, all optional | Opens `main` or `support`, or reopens one that is already up with those settings, which is how you change identity without changing which browser you are talking to. `support` left without a `proxy` goes out through `main`'s exit. |
-| `browser_close` | `browser` optional | Closes `main` or `support` and frees what it held. Its page goes with it; the other browser is not touched. Forgets who it was, so the next one under that role is a new stranger rather than that person resumed. Close `support` when you are done with it. |
-| `browser_status` | `browser` optional | Who is browsing right now: the seed, the exit, the profile and the page it is on. Starts nothing; if that browser is not up it says so. |
-| `browser_list` | none | Which of the two browsers are open, where each one is, and which one commands that name none go to. **Answers JSON**: `focus`, `limit`, `note`, and `browsers` with `id`, `running`, `focused`, the `url` it is on and the `urls` of every page it holds. A browser that is not running has been declared and has not been needed yet. Starts nothing, so asking is free. |
+| `browser_close` | `browser` optional | Closes `main` or `support` and frees what it held. Its page goes with it; the other browser is not touched. Who it was is kept: `browser_open` with no arguments brings the same person back. Close `support` when you are done with it. |
+| `browser_status` | `browser` optional | Who is browsing right now: the seed, the exit, the profile and the page it is on. Starts nothing; a browser that is not open, or gone, is answered with the sentence that says which. |
+| `browser_list` | none | Which of the two browsers are open, where each one is, and which one commands that name none go to. **Answers JSON**: `focus`, `limit`, `note`, and `browsers` with `id`, `running`, `focused`, the `url` it is on and the `urls` of every page it holds. Only open browsers are listed. Starts nothing, so asking is free. |
 
-You can ignore `browser_open` entirely: the first tool that needs a page opens
-`main` on its own, as a different stranger every time, which is the right
-default. Open `support` alongside it with `browser_open` and address commands
-to whichever one you mean; `browser_open` called again on a browser that is
-already up replaces it rather than adding a third, which is why there are only
-ever two.
+`browser_open` is the first call of every session: nothing else opens a
+browser. With no arguments it is the person this session already was, or a
+fresh one the first time. Open `support` alongside it with `browser_open` and
+address commands to whichever one you mean; `browser_open` called again on a
+browser that is already up replaces it rather than adding a third, which is
+why there are only ever two.
 
 **The interface's conversation column and this server's saved identity are the
 same idea, one layer up.** A conversation in `aihawk ui` spawns its own server
@@ -258,16 +258,15 @@ argument, because this server has no way to be asked about a second one. A
 standalone client that names none of that, and a checkout run directly, both
 land on the same place, `default`.
 
-The identity is written down as soon as `main` holds one, and what is written
-is the DECLARATION - who it is and where its page was pointing - not a running
-engine. Reopening it gives the identity back immediately; the engine starts
-when a command is aimed at it, as the right person, **and reopens the page it
-had** - the url is saved with the identity, and the first command aimed at a
-declared browser is what pays it back. That happens once: after it, where the
-browser goes is its own business. Cookies and logins come back only where a
-browser had a `profile`, which is the mechanism that already exists for that.
-`support` is never written down: a helper that survived a restart would be a
-second identity, which is the thing having only two fixed roles rules out.
+What is written down is who `main` is - seed, exit, profile - and nothing
+else: `browser_open` writes it, `browser_open` with no arguments reads it
+back, and no other tool touches the file. A conversation reopened tomorrow
+is the same person the moment it opens the browser again; where the page
+was is in the conversation, not in the file. Cookies and logins come back
+only where a browser had a `profile`, which is the mechanism that already
+exists for that. `support` is never written down: a helper that survived a
+restart would be a second identity, which is the thing having only two fixed
+roles rules out.
 
 - **`seed`** is the identity. Same seed, same fingerprint, every time. Leave it
   out and one is drawn; the answer says which, so an identity worth repeating

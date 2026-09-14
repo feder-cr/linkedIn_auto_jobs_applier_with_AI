@@ -128,31 +128,6 @@ async function drawFleet(){
      the same single screen is the defect this page has written down twice. */
   stage.grid = stage.fleet.filter(b => b.running).length >= 2 ? 2 : 1;
   drawStage();
-  drawStrip();
-}
-
-/* ⛔ SEPARATE FROM THE POLL, because changing what is watched changes what
-   the strip holds and there is nothing to ask the server about it. While this
-   lived inside `drawFleet` the strip stayed wrong until the next poll landed -
-   up to three seconds showing a browser that was already on the stage. It
-   reads the fleet that is already here. */
-function drawStrip(){
-  /* The strip carries what the stage does not. With both browsers running the
-     stage holds both and the strip is empty; with one running, the declared
-     other is a chip here. */
-  const up = new Set(onStage().map(b => b.id));
-  const others = stage.fleet.filter(b => !up.has(b.id));
-  const box = $('thumbs');
-  /* Only when the SET changes, or the row would flash once a poll for no new
-     fact. */
-  const sig = others.map(b => b.id + (b.running ? '1' : '0') + (b.id === stage.focus ? 'a' : ''))
-                    .join(',') + '|' + watched() + '|' + stage.grid;
-  if(box.dataset.sig !== sig){
-    box.dataset.sig = sig;
-    box.textContent = '';
-    for(const b of others) box.appendChild(chipFor(b));
-  }
-  box.hidden = others.length === 0;
 }
 
 /* Whatever was waiting when the page went away comes back into the composer

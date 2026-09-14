@@ -10,7 +10,7 @@ test_stdio_e2e.py` drives a real server and never touches a route;
 
 What the join costs when nobody tests it, in this exact route: `/live/frame`
 decides between 204 and 503 by SUBSTRING-TESTING the prose a tool raised
-(`NOTHING_RUNNING in reason`). The constant ships in one package so the two
+(`NOT_OPEN % role in reason`). The constant ships in one package so the two
 readers cannot drift, which is the mitigation, and it is still a
 machine-readable fact travelling as English. Against a fake link that
 comparison is never exercised at all: the double returns whatever the test
@@ -34,7 +34,7 @@ twenty seconds with a name instead of hanging a suite.
 NO BROWSER IS STARTED, which is what makes this cheap enough to run by
 default. The chain under test is: HTTP request -> `which` -> `Sessions` ->
 a real `Link` over stdio -> a real `python -m aihawk` child -> `browser_watch`
--> `looking()` refusing because nothing is running -> `NOTHING_RUNNING` as an
+-> `acting()` refusing because nothing is open -> `NOT_OPEN` as an
 error result -> back through `image_of` and the substring test -> 204. Every
 link in that sentence is real except the browser, and the browser is the one
 part `browser_watch` is documented never to start.

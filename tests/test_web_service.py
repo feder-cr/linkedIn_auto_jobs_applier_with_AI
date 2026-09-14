@@ -510,12 +510,12 @@ async def test_nothing_to_look_at_is_the_idle_pane_and_not_an_error():
     the route said before the refusal existed, and any edit to the shared
     sentence that leaves the two copies to drift.
     """
-    from aihawk.mcp import NOTHING_RUNNING
+    from aihawk.mcp import NOT_OPEN
 
     class AsleepLink(WatchingLink):
         async def call(self, name, arguments=None):
             await FakeLink.call(self, name, arguments)
-            return Result(Item(type="text", text=NOTHING_RUNNING), isError=True)
+            return Result(Item(type="text", text=NOT_OPEN % "main"), isError=True)
 
     link = AsleepLink()
     route = await _frame_route(link)

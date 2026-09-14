@@ -275,40 +275,26 @@ async def test_looking_at_a_pane_tells_the_agent_nothing():
 
 # --- the arithmetic, read out of the page -----------------------------------
 
-def test_the_workspace_has_no_pump_of_its_own_and_the_strip_is_names():
-    """⛔ THE PREVIEW LOOP IS GONE BECAUSE THE ROW IT REFRESHED COULD NOT HOLD
-    A PICTURE. The stage shows every running browser - up to the two a session
-    can have - so what is left for the strip is the declared one that has not
-    started, and that is a name, not a picture. A loop refreshing pictures in
-    that row, one pane every 400 ms in turn, was a loop over an empty set, with
-    its constant, its counter and its styles.
+def test_the_workspace_has_no_strip_and_no_pump_of_its_own():
+    """⛔ THE STRIP OF OTHER BROWSERS IS GONE BECAUSE IT WAS EMPTY BY
+    CONSTRUCTION. It held the browsers not on the stage; the stage holds every
+    open browser, up to the two a session can have, and since 0.53.0 a browser
+    is either open or not there at all - nothing is "declared and not
+    started" to draw a chip for. Before that a preview loop refreshed pictures
+    in the same row, one pane every 400 ms, over an equally empty set.
 
     What has to stay true is the shape: the page's pumps are started from one
-    place through one scheduler, and nothing in the workspace starts a timer
-    or asks for a picture of its own.
+    place through one scheduler, and nothing in the workspace draws a second
+    row or starts a timer of its own.
 
-    Known-bad, two: give the chip an `<img>` and a fetch; start a `setTimeout`
-    inside the function that builds it.
+    Known-bad, two: put `#thumbs` back with a builder that fetches a picture;
+    start a fourth pump.
     """
     code = re.sub(r"/\*.*?\*/", "", PAGE[PAGE.index("<script"):], flags=re.S)
 
-    start = code.index("function chipFor")
-    depth, end = 0, start
-    for i in range(code.index("{", start), len(code)):
-        if code[i] == "{":
-            depth += 1
-        elif code[i] == "}":
-            depth -= 1
-            if depth == 0:
-                end = i
-                break
-    builder = code[start:end]
-    assert "img" not in builder and "fetch" not in builder and "door(" not in builder, (
-        "the strip draws a picture, which is a second live pane on a pipe the "
-        "agent shares")
-    assert "setTimeout" not in builder and "setInterval" not in builder, (
-        "a chip schedules its own refresh, so the cost of the strip grows with "
-        "what is on screen")
+    assert "thumbs" not in code and "chipFor" not in code and "drawStrip" not in code, (
+        "the strip of other browsers is back, for a set that is empty by construction")
+    assert 'id="thumbs"' not in PAGE, "the markup still holds the strip's box"
 
     # Three pumps, one shape, started from one line.
     started = re.findall(r"every\(([^,]+), (\w+)\);", code)

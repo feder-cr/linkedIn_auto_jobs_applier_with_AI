@@ -1247,17 +1247,18 @@ async def test_a_tool_the_model_remembers_and_this_server_lacks_gets_a_map():
         "the person watching does not see the step fail with the sentence: %r" % (seen,))
 
 
-def test_the_instructions_open_by_saying_there_is_nothing_to_start():
+def test_the_instructions_open_by_saying_to_open_the_browser_first():
     """The other half of the same defect, one step earlier: before the model
-    can reach for an old session tool, the first paragraph it reads says the
-    browsers are already there and where to begin.
+    can reach for an old session tool, the first paragraph it reads names the
+    two browsers and says where to begin - `browser_open`, which since 0.53.0
+    is the only tool that opens one.
 
     Known-bad: move the paragraph down, or drop the two names from it.
     """
     from aihawk.mcp.server import INSTRUCTIONS
     first = INSTRUCTIONS.split(chr(10) + chr(10))[0].lower()
-    assert "main" in first and "support" in first and "already there" in first, (
-        "the instructions do not open by saying the two browsers exist: %r" % first)
-    assert "browser_navigate" in first, (
+    assert "main" in first and "support" in first, (
+        "the instructions do not open by naming the two browsers: %r" % first)
+    assert "browser_open" in first and "before anything else" in first, (
         "the opening does not say where to begin: %r" % first)
 

@@ -22,8 +22,8 @@ class _Session:
     def page(self):
         return self._page
 
-    def list_pages(self):
-        return ["p1"]
+    def pages(self):
+        return [self._page]
 
 
 @pytest.fixture(scope="module")

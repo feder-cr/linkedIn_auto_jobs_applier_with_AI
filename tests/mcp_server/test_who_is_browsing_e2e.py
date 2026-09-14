@@ -123,7 +123,7 @@ async def test_status_reports_the_person_actually_browsing():
             await mcp.initialize()
 
             before = _text(await mcp.call_tool("browser_status", {}))
-            assert "no browser is running" in before, before
+            assert "is not open" in before, before
 
             _text(await mcp.call_tool("browser_open", {"seed": 31337}))
             after = _text(await mcp.call_tool("browser_status", {}))
