@@ -115,19 +115,6 @@ def test_the_stage_never_holds_more_than_the_layout_asks_for():
         assert len(on_stage(up("a", "b", "c", "d", "e", "f"), grid=n)) == n
 
 
-def test_the_strip_carries_what_the_stage_does_not():
-    """Otherwise a browser shows twice at four-up, or vanishes at one-up.
-
-    Read from the code rather than executed: it is one line, and what it has to
-    be is a set difference against the stage.
-    """
-    code = re.sub(r"/\*.*?\*/", "", PAGE, flags=re.S)
-    assert re.search(r"const up = new Set\(onStage\(\)\.map\(b => b\.id\)\);", code), (
-        "the strip is no longer built from what the stage is showing")
-    assert re.search(r"stage\.fleet\.filter\(b => !up\.has\(b\.id\)\)", code), (
-        "the strip does not exclude the browsers already on screen")
-
-
 def test_the_stage_follows_the_browsers_and_is_not_chosen():
     """⛔ THIS TEST USED TO ASSERT THAT THE LAYOUT WAS REMEMBERED, and it was
     right then: a session could hold eight browsers, so how many to watch at

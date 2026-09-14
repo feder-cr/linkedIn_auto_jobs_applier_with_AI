@@ -107,7 +107,7 @@ async def navigate(session, url: str, wait_until: str = "domcontentloaded") -> s
     replaces, because it is a confident and wrong statement rather than a vague
     one. The floor is load-bearing, not hygiene.
     """
-    if not session.list_pages():
+    if not session.pages():
         await session.new_page()
     page = session.page()
     response = await page.goto(url, wait_until=wait_until, timeout=45_000)

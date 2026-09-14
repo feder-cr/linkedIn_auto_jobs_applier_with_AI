@@ -70,10 +70,8 @@ def test_the_server_starts_each_test_holding_nothing():
     """
     from aihawk.mcp import server
 
-    assert server.work.restored is False, (
-        "server.work arrived at this test already restored")
-    assert server.work.registry.declared() == [], (
-        "server.work arrived at this test holding %r" % server.work.registry.declared())
+    assert server.work.roles() == [], (
+        "server.work arrived at this test holding %r" % server.work.roles())
 
 
 def test_the_conftest_imports_nothing_the_light_jobs_do_not_have():

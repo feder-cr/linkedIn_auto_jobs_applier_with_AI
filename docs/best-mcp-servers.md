@@ -53,7 +53,7 @@ a deliberate choice.
 
 **What it costs in context.** Every tool description travels in the model's
 context on every turn, and so does the JSON schema of its arguments. Measured on our own browser server on 2026-09-13: **16 tools, 3,192 tokens resent on every single turn**
-(9,145 characters of description, counted with a tokenizer). Two servers of that
+(8,953 characters of description, counted with a tokenizer). Two servers of that
 size on a forty-turn session spend about 255,000 tokens restating what the tools
 are, before a single page has been read.
 

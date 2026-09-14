@@ -12,11 +12,6 @@ that cleans up here, including the one this replaced.
 """
 import pytest
 
-#: The browser this file addresses. Explicit since the registry's key
-#: stopped having a default: a bare "default" was never a key any browser
-#: occupied, because the server composes `<piece of work>/<browser>`.
-KEY = "default/main"
-
 
 class _FakeSession:
     def __init__(self, **kwargs):
@@ -30,21 +25,24 @@ class _FakeSession:
     async def close(self):
         self.closed = True
 
+    def is_alive(self):
+        return not self.closed
+
 
 @pytest.mark.asyncio
 async def test_a_client_leaving_does_not_close_its_browser():
     from aihawk.mcp import server
 
     fake = _FakeSession()
-    server.work.registry._browsers[KEY] = fake
+    server.work._open["main"] = fake
 
     async with server._lifespan(server.mcp) as ctx:
         assert ctx == {}
 
     assert fake.closed is False, "the lifespan closed a session; a second client would find no browser"
-    assert server.work.registry.peek(KEY) is fake
+    assert server.work.session("main") is fake
 
-    await server.work.registry.close_all()
+    await server.work.close_all()
 
 
 @pytest.mark.asyncio
@@ -52,17 +50,17 @@ async def test_several_clients_coming_and_going_leave_every_session_alone():
     from aihawk.mcp import server
 
     a, b = _FakeSession(), _FakeSession()
-    server.work.registry._browsers["chat"] = a
-    server.work.registry._browsers["someone-else"] = b
+    server.work._open["main"] = a
+    server.work._open["support"] = b
 
     for _ in range(3):
         async with server._lifespan(server.mcp):
             pass
 
     assert a.closed is False and b.closed is False
-    assert server.work.registry.ids() == ["chat", "someone-else"]
+    assert server.work.roles() == ["main", "support"]
 
-    await server.work.registry.close_all()
+    await server.work.close_all()
 
 
 @pytest.mark.asyncio
@@ -73,12 +71,12 @@ async def test_close_all_is_what_actually_shuts_them_down():
     from aihawk.mcp import server
 
     fake = _FakeSession()
-    server.work.registry._browsers[KEY] = fake
+    server.work._open["main"] = fake
 
-    await server.work.registry.close_all()
+    await server.work.close_all()
 
     assert fake.closed is True
-    assert server.work.registry.ids() == []
+    assert server.work.roles() == []
 
 
 def _main_with(monkeypatch, transport):
@@ -106,12 +104,6 @@ def test_over_http_the_exit_hook_is_registered(monkeypatch):
     only moment left, and Firefox is a tree of processes holding a profile
     directory and a port.
 
-    ⛔ BEHAVIOUR, NOT A SCAN. This used to walk the module's AST for a
-    top-level `atexit.register(...)` line, because `atexit` exposes no way to
-    read what is registered. Stubbing `atexit.register` for the span of one
-    `main()` call reads exactly that, and it can tell the two transports
-    apart, which a scan for a module-level line never could.
-
     Known-bad: drop the `atexit.register` line from the HTTP branch of
     `main()`. Green before; red now.
     """
@@ -132,8 +124,8 @@ def test_over_stdio_the_lifespan_closes_and_no_hook_is_registered(monkeypatch):
     would run in a NEW loop, where an await on a Playwright object from the
     finished one never answers - measured at 180 s of waiting on Linux.
 
-    Known-bad: register the hook unconditionally at import, as this module
-    did until this test existed. Green before; red now.
+    Known-bad: register the hook unconditionally at import. Green before; red
+    now.
     """
     from aihawk.mcp import server
 

@@ -101,18 +101,11 @@ def test_a_tool_that_can_start_a_browser_is_not_marked_read_only():
     """The rule behind the three groups, checked against the CODE rather than
     against the list above, so a new tool cannot be filed in the wrong group.
 
-    A tool whose body awaits `ready()` can start a browser. Read straight from
-    the source with `ast`, because a name lookup would also match the word in
-    a docstring, and that is how a gate ends up agreeing with a comment.
-
-    ⛔ WHAT THIS GUARDS CHANGED ON 2026-09-13 AND THE CHECK DID NOT HAVE TO.
-    It was written when five reading tools went through `ready` and declared
-    themselves additive, and it held them to that. Those tools now go through
-    `already_open`, which refuses instead of starting, so they are read-only
-    again and this passes with nothing to report. That is the useful state:
-    the rule is "a tool that can start a browser does not promise it only
-    reads", and it is now satisfied by the behaviour rather than by the
-    label. Moving any read back onto `ready` turns it red again.
+    A tool whose body calls `work.open(...)` can start a browser. Read straight
+    from the source with `ast`, because a name lookup would also match the
+    word in a docstring, and that is how a gate ends up agreeing with a
+    comment. Since 0.53.0 exactly one tool does, `browser_open`; a second one
+    calling it - a read that opens a browser to answer - turns this red.
     """
     import ast
     import inspect
@@ -123,15 +116,15 @@ def test_a_tool_that_can_start_a_browser_is_not_marked_read_only():
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             for inner in ast.walk(node):
-                # `work.ready(...)` since the lifecycle became one object, and
-                # `work.retrying(...)` wakes through it too.
                 if (isinstance(inner, ast.Call)
                         and isinstance(inner.func, ast.Attribute)
                         and isinstance(inner.func.value, ast.Name)
                         and inner.func.value.id == "work"
-                        and inner.func.attr in ("ready", "retrying")):
+                        and inner.func.attr == "open"):
                     starts.add(node.name)
-    assert starts, "no tool was found calling work.ready(), so this is not reading the server"
+    assert starts == {"browser_open"}, (
+        "the tools that can start a browser are %r; browser_open is the only "
+        "one that may" % sorted(starts))
     by_name = {t.name: t.annotations for t in _live_tools()}
     wrong = sorted(n for n in starts
                    if n in by_name and by_name[n].readOnlyHint is True)

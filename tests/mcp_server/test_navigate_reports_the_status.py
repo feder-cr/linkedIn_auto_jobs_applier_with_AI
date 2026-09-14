@@ -61,8 +61,8 @@ class _Session:
         self._page = page
         self.new_pages = 0
 
-    def list_pages(self):
-        return ["tab-1"]
+    def pages(self):
+        return [self._page]
 
     async def new_page(self):
         self.new_pages += 1
@@ -77,8 +77,8 @@ class _EmptySession(_Session):
         super().__init__(page)
         self._opened = False
 
-    def list_pages(self):
-        return ["tab-1"] if self._opened else []
+    def pages(self):
+        return [self._page] if self._opened else []
 
     async def new_page(self):
         self._opened = True

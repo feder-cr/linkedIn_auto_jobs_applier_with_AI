@@ -434,10 +434,10 @@ async def test_the_live_pane_of_a_conversation_that_has_done_nothing_starts_noth
     picture of nothing, and the person who opened it asked for a conversation.
 
     What holds it is that `browser_watch` refuses a browser that is not
-    running instead of starting one, which is gated where it can be proven -
-    `tests/mcp_server/test_a_look_starts_nothing.py`, against a real registry
-    that can be asked how many sessions it built. Here the link is a double
-    with no registry behind it, so the only honest claim left is the one below:
+    open instead of starting one, which is gated where it can be proven -
+    `tests/mcp_server/test_open_first.py`, against a piece of work that can
+    be asked what it holds. Here the link is a double with nothing behind
+    it, so the only honest claim left is the one below:
     the pane draws idle and asks for exactly the one thing, so nothing else can
     be reaching for a browser on the way.
 

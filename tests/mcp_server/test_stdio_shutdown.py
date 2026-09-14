@@ -60,7 +60,11 @@ def test_closing_stdin_with_a_page_open_ends_the_server_and_its_browser():
                              "clientInfo": {"name": "shutdown-test", "version": "0"}}})
         assert "result" in _recv(p)
         _send(p, {"jsonrpc": "2.0", "method": "notifications/initialized"})
+        # Open first: since 0.53.0 no other tool opens a browser.
         _send(p, {"jsonrpc": "2.0", "id": 2, "method": "tools/call",
+                  "params": {"name": "browser_open", "arguments": {}}})
+        assert not _recv(p).get("result", {}).get("isError")
+        _send(p, {"jsonrpc": "2.0", "id": 3, "method": "tools/call",
                   "params": {"name": "browser_navigate",
                              "arguments": {"url": "data:text/html,<h1>up</h1>"}}})
         answer = _recv(p)

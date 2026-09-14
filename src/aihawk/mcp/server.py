@@ -18,8 +18,9 @@ they were removed because the case they serve is better served by `support` -
 a second tab carries the identity's cookies and fingerprint to the second
 site, which is the one thing the two browsers exist to keep apart.
 
-Config comes from STEALTHFOX_* env vars. A command starts a browser when none
-is running; a read does not. `work.py` is where that rule lives.
+Config comes from STEALTHFOX_* env vars. Nothing here opens a browser but
+`browser_open`; a tool whose browser is not open, or gone, says so and names
+that call. `work.py` is where that rule lives.
 
 Every tool here is a wrapper. The operations live in `actions.py` and the
 browsers live in `registry.py`, so every client drives them through exactly
@@ -50,9 +51,9 @@ from typing import Literal
 from mcp.server.fastmcp import FastMCP, Image
 from mcp.types import ToolAnnotations
 
-from . import NOTHING_RUNNING, __version__, actions, store
+from . import __version__, actions, store
 from ..quiet import swallow
-from .work import DEFAULT_BROWSER_ID, REBUILT, Work
+from .work import DEFAULT_BROWSER_ID, Work
 # Reached by tests as `server.<name>`; the tools themselves no longer
 # read them, because the piece of work answers with them.
 from .work import MAX_BROWSERS_PER_SESSION, SUPPORT_BROWSER_ID  # noqa: F401
@@ -134,14 +135,12 @@ def _close_sessions_at_exit() -> None:
 # went from "click the select" straight to running `s.value='beta'` as script,
 # skipping the two rungs in between - coordinates, and a screenshot - because
 # nothing had told it they were rungs.
-INSTRUCTIONS = """Two browsers, `main` and `support`, are already there. There is
-nothing to list or choose before acting: go straight to the task with
-browser_navigate on `main`, which opens it if it is not open yet.
-
-A LOOK DOES NOT OPEN A BROWSER. Every reading tool below needs one that is
-already running and says so plainly if none is. Send a command first -
-browser_navigate, or browser_open if you want to choose the identity, the exit
-or the profile - and then look.
+INSTRUCTIONS = """Two browsers, `main` and `support`. OPEN `main` WITH browser_open
+BEFORE ANYTHING ELSE: no other tool opens a browser, and every tool that finds
+its browser not open answers with a sentence saying so instead of working.
+With no arguments browser_open brings back the person this session already
+was; pass a seed, a proxy or a profile only to be somebody else. If a tool
+says the browser is gone, call browser_open again and carry on.
 
 Drive the page the way a person would. Everything here goes
 through the real pointer and the real keyboard.
@@ -244,9 +243,9 @@ def _says(title: str, *, read_only: bool = False, destructive: bool = False,
     the first while going through the wake funnel, which STARTS a real Firefox
     when none is running. A tool that can spawn a browser has modified its
     environment, so `readOnlyHint` was false in fact and true on the wire, and
-    a client trusting it ran them unattended. The reads go through
-    `Work.already_open` now, which refuses instead of starting, so the hint
-    is true again. Stating both hints explicitly is what keeps that legible:
+    a client trusting it ran them unattended. Nothing starts a browser now
+    but `browser_open` - every other tool goes through `Work.acting`, which
+    answers a sentence instead - so the hint is true again. Stating both hints explicitly is what keeps that legible:
     an ABSENT hint and a hint set to false are different facts, and a client
     reading MCP's defaults treats a missing `destructiveHint` as true.
 
@@ -307,9 +306,8 @@ async def browser_close(browser: Browser | None = None) -> str:
 
     The page it had is gone with it. The other browser is not touched.
 
-    Closing FORGETS who that browser was: opening it again is a new stranger,
-    not the same person resumed. That is deliberate - a browser somebody shut
-    down should not come back wearing its old identity.
+    Who it was is kept: browser_open with no arguments brings the same person
+    back. To be somebody else, pass a seed, a proxy or a profile.
     """
     return await work.close(browser or DEFAULT_BROWSER_ID)
 
@@ -321,11 +319,10 @@ async def browser_list() -> str:
 
     Answers JSON: `focus`, `limit`, `note`, and `browsers` - each with `id`,
     `running`, `focused`, `url` (the page it is on) and `urls` (every page it
-    holds, which is more than one only when a site opened one). A browser that
-    is not running has been declared and has not been needed yet; the next
-    command aimed at it starts it as the same person.
+    holds, which is more than one only when a site opened one). Only open
+    browsers are listed.
 
-    Starts nothing: it reports what is running, so asking is free.
+    Starts nothing: it reports what is open, so asking is free.
     """
     # ⛔ JSON, WHERE THIS ANSWERED PROSE UNTIL 0.18.0, and the reason is the
     # stated architecture rather than taste: the interface is a client of these
@@ -350,8 +347,8 @@ async def browser_status(browser: Browser | None = None) -> str:
     `browser_open` to become this person again, so this is also how you
     record an identity worth repeating.
 
-    It starts nothing. If no browser is running yet it says so, because until
-    one is running there is no identity to report.
+    It starts nothing: a browser that is not open, or gone, is answered with
+    the sentence that says which.
 
     `browser` is `main` unless you say `support`, and they share nothing.
     """
@@ -394,11 +391,8 @@ async def browser_navigate(url: str, wait_until: str = "domcontentloaded",
     load.
 
     `browser` is `main` unless you say `support`, and they share nothing."""
-    said, rebuilt = await work.retrying(actions.navigate, url,
-                                        wait_until=wait_until, role=browser)
-    if rebuilt:
-        return REBUILT % (browser or DEFAULT_BROWSER_ID) + said
-    return said
+    return await work.acting(actions.navigate, url, wait_until=wait_until,
+                             role=browser)
 
 
 @mcp.tool(annotations=_says("Read the page text", read_only=True))
@@ -414,9 +408,7 @@ async def browser_read_text(selector: str = "body", max_chars: int = 6000,
     what comes back, so text that ends without that marker is the whole thing.
 
     `browser` is `main` unless you say `support`, and they share nothing."""
-    return await actions.read_text(
-        await work.already_open(browser),
-        selector, max_chars)
+    return await work.acting(actions.read_text, selector, max_chars, role=browser)
 
 
 @mcp.tool(annotations=_says("Snapshot the page", read_only=True))
@@ -439,8 +431,7 @@ async def browser_snapshot(max_chars: int = 0, browser: Browser | None = None) -
 
     `browser` is `main` unless you say `support`, and they share nothing.
     """
-    return await actions.snapshot(
-        await work.already_open(browser), max_chars)
+    return await work.acting(actions.snapshot, max_chars, role=browser)
 
 
 @mcp.tool(annotations=_says("Read the page HTML", read_only=True))
@@ -462,8 +453,7 @@ async def browser_read_html(mode: str = "form", browser: Browser | None = None) 
 
     `browser` is `main` unless you say `support`, and they share nothing.
     """
-    return await actions.read_html(
-        await work.already_open(browser), mode)
+    return await work.acting(actions.read_html, mode, role=browser)
 
 
 @mcp.tool(annotations=_says("Take a screenshot", read_only=True))
@@ -471,8 +461,7 @@ async def browser_take_screenshot(browser: Browser | None = None) -> Image:
     """One screenshot of this browser's page, on demand.
 
     `browser` is `main` unless you say `support`, and they share nothing."""
-    png = await actions.screenshot_png(
-        await work.already_open(browser))
+    png = await work.acting(actions.screenshot_png, role=browser)
     return Image(data=png, format="png")
 
 
@@ -484,20 +473,17 @@ async def browser_watch(browser: Browser | None = None) -> Image:
     is window pixels, so do not feed its coordinates to browser_click_at; use
     browser_take_screenshot for that.
 
-    Starts nothing. A browser that is not running has no window, so this
-    refuses rather than opening one to photograph: a look is not a command, and
-    the live panes call this many times a second.
+    Starts nothing. A browser that is not open has no window, so this answers
+    the sentence that says so, and the live panes - which call this many times
+    a second - read that sentence as the idle pane.
 
     `browser` is `main` unless you say `support`, and they share nothing."""
-    session = work.looking(browser)
-    if session is None:
-        # It REFUSES rather than answering the sentence, and only because the
-        # type says so: this is declared to return an Image, and `Image | str`
-        # is not a schema pydantic will build - measured, five test modules
-        # refuse to import. A refusal reaches a client as an error result
-        # carrying the reason, which every client already handles.
-        raise RuntimeError(NOTHING_RUNNING)
-    jpeg = await session.watch_frame()
+    # It REFUSES rather than answering the sentence as text, and only because
+    # the type says so: this is declared to return an Image, and `Image | str`
+    # is not a schema pydantic will build - measured, five test modules
+    # refuse to import. A refusal reaches a client as an error result
+    # carrying the reason, which every client already handles.
+    jpeg = await work.acting(lambda session: session.watch_frame(), role=browser)
     return Image(data=jpeg, format="jpeg")
 
 
@@ -512,8 +498,7 @@ async def browser_click(selector: str, browser: Browser | None = None) -> str:
     browser_snapshot.
 
     `browser` is `main` unless you say `support`, and they share nothing."""
-    return await actions.click(
-        await work.ready(browser), selector)
+    return await work.acting(actions.click, selector, role=browser)
 
 
 @mcp.tool(annotations=_says("Click at a point", destructive=True))
@@ -538,9 +523,7 @@ async def browser_click_at(x: float, y: float, hold_seconds: float = 0.0,
     # happened, on the one tool that exists for sliders and press-and-hold
     # challenges. The floor in pyproject.toml is set accordingly. Said here and
     # not in the description above, which the API cuts at 1024 characters.
-    png = await actions.click_at(
-        await work.ready(browser),
-        x, y, hold_seconds)
+    png = await work.acting(actions.click_at, x, y, hold_seconds, role=browser)
     return Image(data=png, format="png")
 
 
@@ -553,8 +536,7 @@ async def browser_type(selector: str, text: str, browser: Browser | None = None)
     use browser_press_key.
 
     `browser` is `main` unless you say `support`, and they share nothing."""
-    return await actions.type_text(
-        await work.ready(browser), selector, text)
+    return await work.acting(actions.type_text, selector, text, role=browser)
 
 
 @mcp.tool(annotations=_says("Choose a dropdown option", destructive=True))
@@ -569,8 +551,7 @@ async def browser_select_option(selector: str, value: str,
     interaction.
 
     `browser` is `main` unless you say `support`, and they share nothing."""
-    return await actions.select_option(
-        await work.ready(browser), selector, value)
+    return await work.acting(actions.select_option, selector, value, role=browser)
 
 
 @mcp.tool(annotations=_says("Press a key", destructive=True))
@@ -579,8 +560,7 @@ async def browser_press_key(key: str, browser: Browser | None = None) -> str:
     "ArrowDown", "Control+a", or a single character.
 
     `browser` is `main` unless you say `support`, and they share nothing."""
-    return await actions.press_key(
-        await work.ready(browser), key)
+    return await work.acting(actions.press_key, key, role=browser)
 
 
 @mcp.tool(annotations=_says("Read the page with JavaScript", read_only=True))
@@ -603,8 +583,7 @@ async def browser_evaluate(expression: str, browser: Browser | None = None) -> s
     answer rather than using it.
 
     `browser` is `main` unless you say `support`, and they share nothing."""
-    return await actions.evaluate(
-        await work.already_open(browser), expression)
+    return await work.acting(actions.evaluate, expression, role=browser)
 
 
 def main() -> None:
