@@ -670,7 +670,7 @@ async def test_the_stage_asks_for_frames_at_a_rate_it_has_measured():
     code = re.sub(r"/\*.*?\*/", "", PAGE, flags=re.S)
     code = re.sub(r"^\s*//.*$", "", code, flags=re.M)
 
-    assert len(re.findall(r"setTimeout\(tick,", code)) == 1, (
+    assert len(re.findall(r"every\(pause, onePass\)", code)) == 1, (
         "the pump is scheduled from more than one place, so its pace is no "
         "longer one number anybody can read")
     # ⛔ AND THE RATE IS PACED ON THE STAGE, NOT ON THE BUTTON. A layout is a

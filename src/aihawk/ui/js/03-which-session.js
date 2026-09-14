@@ -8,9 +8,20 @@
 
    The id is kept in the URL rather than in a variable, so a reload, a bookmark
    and a second tab all land in the same conversation instead of silently
-   dropping to the default one. */
-let here = new URLSearchParams(location.search).get('s') || 'default';
-const at = (path) => path + (path.includes('?') ? '&' : '?') + 's=' + encodeURIComponent(here);
+   dropping to the default one.
+
+   ⛔ AND A PAGE THAT NAMES NONE ASKS WITH NONE. The default conversation's
+   id is the server's constant - `DEFAULT_SESSION_ID`, declared once there -
+   and until 0.52.0 this line held a second copy of it, `'default'`, that
+   nothing kept in step. A request with no `?s=` is answered with the
+   server's default by the server's own rule, and the one place this page
+   has to COMPARE against that id, the session column, learns it from the
+   listing, which carries it. */
+let here = new URLSearchParams(location.search).get('s') || '';
+let defaultId = '';
+const isHere = (id) => id === (here || defaultId);
+const at = (path) => !here ? path
+  : path + (path.includes('?') ? '&' : '?') + 's=' + encodeURIComponent(here);
 
 let es = null;
 function listen(){

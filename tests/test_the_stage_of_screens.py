@@ -33,11 +33,8 @@ FIRST = "function onStage()"
 LAST = "function blank(cell, why)"
 
 SHIM = """
-let fleet = %s;
-let grid = %d;
-const pinned2 = %s;
-const focusHere = %s;
-const watched = () => pinned2 || focusHere;
+const stage = {fleet: %s, grid: %d, pinned: %s, focus: %s, turn: 0};
+const watched = () => stage.pinned || stage.focus;
 """
 
 
@@ -96,7 +93,7 @@ def test_the_watched_one_comes_first_so_clicking_brings_it_to_the_front():
 
     Known-bad: return the fleet in server order and slice it.
     """
-    assert on_stage(up("a", "b", "c", "d"), grid=4, focus="c")[0] == "c"
+    assert on_stage(up("a", "b", "c"), grid=2, focus="c")[0] == "c"
     assert on_stage(up("a", "b", "c", "d"), grid=2, pinned="d") == ["d", "a"]
 
 
@@ -108,13 +105,13 @@ def test_a_browser_that_is_not_running_is_never_given_a_screen():
     Known-bad: drop the `b.running` filter.
     """
     fleet = up("a") + [{"id": "z", "running": False, "urls": []}] + up("b")
-    assert on_stage(fleet, grid=4) == ["a", "b"]
+    assert on_stage(fleet, grid=2) == ["a", "b"]
 
 
 def test_the_stage_never_holds_more_than_the_layout_asks_for():
     """Known-bad: drop the slice. Eight live screens is the arithmetic that
     saturates the pipe, which is the thing the measurement forbids."""
-    for n in (1, 2, 4):
+    for n in (1, 2):
         assert len(on_stage(up("a", "b", "c", "d", "e", "f"), grid=n)) == n
 
 
@@ -127,7 +124,7 @@ def test_the_strip_carries_what_the_stage_does_not():
     code = re.sub(r"/\*.*?\*/", "", PAGE, flags=re.S)
     assert re.search(r"const up = new Set\(onStage\(\)\.map\(b => b\.id\)\);", code), (
         "the strip is no longer built from what the stage is showing")
-    assert re.search(r"fleet\.filter\(b => !up\.has\(b\.id\)\)", code), (
+    assert re.search(r"stage\.fleet\.filter\(b => !up\.has\(b\.id\)\)", code), (
         "the strip does not exclude the browsers already on screen")
 
 
@@ -149,18 +146,19 @@ def test_the_stage_follows_the_browsers_and_is_not_chosen():
     assert "GRIDKEY" not in code and "setGrid" not in code, (
         "the layout picker is back, and there is nothing for it to choose")
 
-    # Anchored on `fleet`, because `let grid = 1, turnOf = 0;` sits earlier in
-    # the page and a looser pattern reads the declaration as the decision - it
-    # answers 1 for every fleet, which looks like a stage that never grows.
-    line = re.search(r"grid = fleet[^;]+;", code)
+    # Anchored on `stage.fleet`, because the declaration of the state object
+    # sits earlier in the page and a looser pattern reads the declaration as
+    # the decision - it answers 1 for every fleet, which looks like a stage
+    # that never grows.
+    line = re.search(r"stage\.grid = stage\.fleet[^;]+;", code)
     assert line, "nothing derives the number of screens from the fleet"
 
     js = ("const answers = [];"
-          "let fleet, grid;"
+          "const stage = {};"
           "for(const running of [0, 1, 2]){"
-          "  fleet = Array.from({length: running}, () => ({running: true}));"
+          "  stage.fleet = Array.from({length: running}, () => ({running: true}));"
           "  %s"
-          "  answers.push(grid);"
+          "  answers.push(stage.grid);"
           "}"
           "process.stdout.write(JSON.stringify(answers));" % line.group(0))
     done = subprocess.run([NODE, "-e", js], capture_output=True, text=True,
@@ -181,11 +179,13 @@ def test_the_template_follows_the_screens_that_exist():
     Known-bad: write the chosen layout into the stage, which is what it did.
     """
     code = re.sub(r"/\*.*?\*/", "", PAGE, flags=re.S)
-    assert "box.dataset.grid = String(Math.min(grid, Math.max(1, show.length)))" in code, (
+    assert "box.dataset.grid = String(Math.min(stage.grid, Math.max(1, show.length)))" in code, (
         "the stage template is not solved from the screens actually drawn")
-    assert '#stage[data-grid="3"]' in PAGE, (
-        "three screens have no template, so a four-up layout with three "
-        "browsers running falls back on whichever rule happens to match")
+    # And no template for a third screen: a session holds two browsers, so a
+    # rule for three or four is a rule no fleet can reach, kept for a layout
+    # picker that is gone.
+    assert '#stage[data-grid="3"]' not in PAGE and '#stage[data-grid="4"]' not in PAGE, (
+        "the page carries templates for screens a session cannot have")
 
 
 def test_the_state_word_says_nothing_when_it_would_repeat_the_tab():
@@ -248,8 +248,9 @@ def test_the_pump_cannot_be_killed_by_a_bad_pass():
     Known-bad: put the body back inside `tick` so a throw skips the timer.
     """
     code = re.sub(r"/\*.*?\*/", "", PAGE, flags=re.S)
-    tick = re.search(r"async function tick\(\)\{(.*?)\n\}", code, re.S)
-    assert tick, "the pump is gone"
-    assert "try" in tick.group(1) and "setTimeout(tick" in tick.group(1), (
+    pump = re.search(r"function every\(pause, pass\)\{(.*?)\n\}", code, re.S)
+    assert pump, "the one pump shape is gone"
+    assert "try" in pump.group(1) and "finally" in pump.group(1) \
+        and "setTimeout(turn" in pump.group(1), (
         "the scheduler does not guard the pass it runs, so one bad frame ends "
-        "the loop: %s" % tick.group(1))
+        "the loop: %s" % pump.group(1))

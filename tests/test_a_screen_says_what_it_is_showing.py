@@ -58,9 +58,8 @@ class N {
 const document = { createElement: t => new N(t), createTextNode: t => { const n = new N('#text'); n._text = t; return n; } };
 const el = (t,c,x) => { const e = document.createElement(t);
                         if(c) e.className = c; if(x != null) e.textContent = x; return e; };
-let focusHere = 'b-two';
-let pinned2 = null;
-const watched = () => pinned2 || focusHere;
+const stage = {fleet: [], focus: 'b-two', pinned: null, grid: 1, turn: 0};
+const watched = () => stage.pinned || stage.focus;
 function watchThis(){}
 function tree(n){ return {tag: n.tag, cls: n.className, hidden: n.hidden,
                           data: n.dataset, text: n._text,
@@ -258,19 +257,30 @@ def test_a_browser_with_no_picture_is_a_name_and_not_a_picture_frame():
     things that are not there. A thing with no image is a name, and a name is a
     chip.
 
-    Known-bad: give a stopped browser a `.thumb` again.
+    ⛔ AND THE PICTURE FRAME IS GONE FOR RUNNING BROWSERS TOO, since 0.52.0:
+    the stage holds every running browser, so the strip never has one to
+    preview, and the card that used to hold an `<img>` here was the shape of a
+    case that could not occur. A chip says the name and, for the stopped one,
+    that it is not running; the agent's mark goes on whichever it is driving.
+
+    Known-bad, two: give the chip an `<img>`; drop the ring that says a
+    browser is not running.
     """
     got = run("""
-      const stopped = thumbFor({id: 'b-off', running: false, urls: []});
-      const running = thumbFor({id: 'b-two', running: true, urls: ['http://x/']});
+      const stopped = chipFor({id: 'b-off', running: false, urls: []});
+      const running = chipFor({id: 'b-two', running: true, urls: ['http://x/']});
       process.stdout.write(JSON.stringify({stopped: tree(stopped), running: tree(running)}));
-    """, one("thumbFor"))
+    """, one("chipFor"))
     assert got["stopped"]["cls"] == "chip", \
         "a stopped browser is drawn as %r" % got["stopped"]["cls"]
+    assert [k["cls"] for k in got["stopped"]["kids"]] == ["off", "id"], \
+        "the chip of a stopped browser does not say so: %r" % got["stopped"]["kids"]
     assert got["stopped"]["kids"][1]["text"] == "b-off", "the chip does not carry the name"
-    assert got["running"]["cls"] == "thumb", "a running browser lost its preview"
-    assert got["running"]["kids"][0]["kids"][0]["tag"] == "img", \
-        "a running browser with a page is not given somewhere to draw it"
+    assert got["running"]["cls"] == "chip", \
+        "a running browser is drawn as %r" % got["running"]["cls"]
+    assert [k["cls"] for k in got["running"]["kids"]] == ["id", "dot"], \
+        "the running one is missing the agent's mark, or carries a picture: %r" \
+        % got["running"]["kids"]
 
 
 def test_an_empty_stage_says_what_to_do_about_being_empty():

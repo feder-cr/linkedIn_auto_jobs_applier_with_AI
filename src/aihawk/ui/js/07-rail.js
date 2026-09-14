@@ -100,7 +100,7 @@ async function renameChat(id, was){
 
 async function forgetChat(id, name){
   /* The browsers go with it, and that is worth saying before it happens rather
-     than after: a session can be holding eight logged-in engines. */
+     than after: a session can be holding a logged-in engine. */
   if(!confirm('Delete "' + name + '"? Its conversation and its browsers go with it.')) return;
   /* ⛔ AND THE ANSWER IS READ. The server REFUSES to delete a session whose
      agent is mid-run, and answers 200 with `forgotten:false`. Ignoring the
@@ -109,7 +109,7 @@ async function forgetChat(id, name){
      said it had worked. */
   let gone = false;
   try {
-    const r = await plainDoor('/sessions/forget', {method:'POST',
+    const r = await door('/sessions/forget', {method:'POST',
                           headers:{'Content-Type':'application/json'},
                           body: JSON.stringify({id})});
     gone = r.ok && (await r.json()).forgotten;
@@ -124,7 +124,7 @@ async function forgetChat(id, name){
             + 'Stop its run first, then delete it.');
     return;
   }
-  if(id === here){ location.search = ''; return; }
+  if(isHere(id)){ location.search = ''; return; }
   drawChats();
 }
 

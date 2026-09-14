@@ -143,34 +143,26 @@ function wipe(){
 }
 let vanished = false;
 let outdated = false;
-/* ⛔ ONE PLACE ASKS THIS CONVERSATION FOR ANYTHING, so one place can notice
-   that it is not there any more. Six fetches carry `?s=`, and each of them
-   would otherwise need the same three lines - written six times, the seventh
-   is where a page goes on talking to a session somebody deleted. Which is not
-   hypothetical: every one of those questions used to DECLARE the session again
-   on the server, so a delete that had already closed the browsers and erased
-   the transcript came straight back as an empty row, for as long as one tab
-   stayed open on it. */
+/* ⛔ ONE PLACE ASKS THE SERVER FOR ANYTHING, so one place can notice that
+   this conversation is not there any more, or that this page is older than
+   the server. Six fetches carried `?s=`, and each of them would otherwise
+   need the same three lines - written six times, the seventh is where a
+   page goes on talking to a session somebody deleted. Which is not
+   hypothetical: every one of those questions used to DECLARE the session
+   again on the server, so a delete that had already closed the browsers and
+   erased the transcript came straight back as an empty row, for as long as
+   one tab stayed open on it.
+
+   ⛔ AND WHICH ROUTES ARE ADDRESSED IS DECIDED HERE, BY THE PATH. The routes
+   under `/sessions` are about the SET of conversations - the listing, a new
+   one, a rename, a delete - so they carry their id in the body and must not
+   have `?s=` appended. Until 0.52.0 that was two doors, `door` and
+   `plainDoor`, and the caller chose: two of the set-level routes went
+   through the addressed one anyway, carrying a `?s=` the server ignored.
+   One door, and the rule is one line a reader can check. */
+const scoped = (path) => !path.startsWith('/sessions');
 async function door(path, init){
-  return readStatus(path, await fetch(at(path), init));
-}
-
-/* ⛔ THE SAME READING, FOR THE THREE ROUTES THAT ARE NOT ADDRESSED. `/sessions`,
-   `/sessions/forget` and `/sessions/rename` are about the SET of conversations
-   rather than one, so they carry their id in the body and must not have `?s=`
-   appended - and two of them were calling `fetch` directly to avoid it, which
-   also skipped what a 404 and a 410 mean.
-
-   What that cost, and it is a sentence rather than a silence: delete a session
-   on a server that no longer serves that route and the page says `That session
-   is still working, so it was not deleted`, because a 404 is not `ok` and the
-   only other reading of `forgotten:false` is that one. A wrong explanation is
-   worse than none - it sends somebody to stop a run that is not running.
-
-   Addressing and reading the answer are two jobs; only the first of them
-   belongs to some routes and not others. */
-async function plainDoor(path, init){
-  return readStatus(path, await fetch(path, init));
+  return readStatus(path, await fetch(scoped(path) ? at(path) : path, init));
 }
 
 function readStatus(path, r){

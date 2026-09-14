@@ -324,11 +324,14 @@ def test_a_frame_is_revoked_before_its_element_is_thrown_away():
     which it does on its own - so a long run leaked one full window capture per
     pane per switch, held until the tab closes.
 
-    Known-bad: remove either call.
+    One rebuild path since 0.52.0: the strip holds names and no pictures, so
+    only the stage has frames to revoke.
+
+    Known-bad: remove the call.
     """
-    assert CODE.count("dropFrames(box);") == 2, (
-        "one of the two rebuild paths throws its pictures away without revoking "
-        "them")
+    assert CODE.count("dropFrames(box);") == 1, (
+        "the stage throws its pictures away without revoking them, or a second "
+        "place holds pictures again")
     assert "URL.revokeObjectURL" in CODE[CODE.index("function dropFrames"):
                                          CODE.index("function blank")]
 
@@ -415,19 +418,24 @@ def test_every_question_this_page_asks_goes_through_one_of_two_doors():
     still working`: a wrong explanation, which is worse than none, because it
     sends somebody to stop a run that is not running.
 
-    Addressing and reading the answer are two jobs. `door` does both, `plainDoor`
-    only the second, and `readStatus` is the one place that knows what an answer
+    ⛔ AND SINCE 0.52.0 THE TWO DOORS ARE ONE, and which routes are addressed
+    is a rule of the path rather than a choice of the caller: everything
+    under `/sessions` is about the set of conversations and carries its id in
+    the body. With two doors, two of those routes went through the addressed
+    one anyway. `readStatus` stays the one place that knows what an answer
     means.
 
-    Known-bad: call `fetch` anywhere else, or take the 410 out of the reader.
+    Known-bad: call `fetch` anywhere else, address a `/sessions` route, or take
+    the 410 out of the reader.
     """
-    assert len(re.findall(r"fetch\(at\(", CODE)) == 1, (
-        "more than one place builds a session-scoped request, and the rest will "
-        "not notice a conversation that no longer exists")
-    assert len(re.findall(r"[^.\w]fetch\(", CODE)) == 2, (
-        "%d places call fetch; there are two doors and everything else has to go "
-        "through one of them, or it cannot be told the page is stale or the "
+    assert len(re.findall(r"[^.\w]fetch\(", CODE)) == 1, (
+        "%d places call fetch; there is one door and everything has to go "
+        "through it, or it cannot be told the page is stale or the "
         "conversation gone" % len(re.findall(r"[^.\w]fetch\(", CODE)))
+    assert "fetch(scoped(path) ? at(path) : path, init)" in CODE, (
+        "the door no longer decides by the path which requests name a conversation")
+    assert "const scoped = (path) => !path.startsWith('/sessions');" in CODE, (
+        "the set-level routes are no longer the ones under /sessions")
     body = CODE[CODE.index("function readStatus(path, r)"):]
     body = body[:body.index(chr(10) + "}")]
     assert "410" in body and "vanish()" in body, (
@@ -516,13 +524,18 @@ def test_nothing_is_polled_while_nobody_is_looking():
     is hidden, which is exactly when the page was still spending its share on
     pictures nobody could see.
 
-    Known-bad: drop the guard from any of the four.
+    ⛔ ONE GUARD SINCE 0.52.0, in the one pump shape: `every` asks before
+    each pass, so no loop can forget to. The visibility handler asks too, to
+    catch up the moment the tab is looked at again.
+
+    Known-bad: drop the guard from `every`.
     """
     assert "const looking = () => !document.hidden" in CODE, (
         "nothing asks whether the page is being looked at")
-    assert CODE.count("looking()") >= 5, (
-        "only %d of the four loops check, plus the definition"
-        % (CODE.count("looking()") - 1))
+    pump = CODE[CODE.index("function every(pause, pass){"):]
+    pump = pump[:pump.index(chr(10) + "}")]
+    assert "if(looking()) await pass()" in pump, (
+        "the pump shape runs its pass whether or not anybody is looking")
     assert "visibilitychange" in CODE, (
         "coming back to the tab waits for the next tick instead of catching up")
 
@@ -602,34 +615,31 @@ def test_no_pump_of_the_page_can_be_killed_by_one_exception():
     if not node:
         pytest.skip("needs node to EXECUTE the page's pumps")
 
-    #: the pump, and the name of the pass it calls.
-    pumps = {"tick": "onePass", "where": "paintWhere",
-             "slowTick": "slowPass", "fleetPoll": "drawFleet"}
+    # ⛔ ONE SHAPE SINCE 0.52.0. The four pumps were four copies of the same
+    # eight lines, each a place to forget the `try` again; `every` is the one
+    # copy, and the three pumps are three calls to it. So the property is
+    # asserted once, against the shape, with a pass that throws and a pause
+    # that is a function - the frame pump's case, which also has to survive.
+    src = CODE[CODE.index("function every(pause, pass){"):]
+    src = src[:src.index(chr(10) + "}") + 2]
+    js = (
+        "let armed = [];"
+        + "globalThis.setTimeout = (fn, ms) => { armed.push(ms); return 0; };"
+        + "globalThis.looking = () => true;"
+        + chr(10) + src + chr(10)
+        + "every(() => 100, async () => { throw new Error('boom'); });"
+        + "every(2000, async () => { throw new Error('boom'); });"
+        + "setImmediate(() => process.stdout.write(JSON.stringify({armed})));"
+    )
+    done = subprocess.run([node, "-e", js], capture_output=True, text=True,
+                          encoding="utf-8", timeout=30)
+    assert done.returncode == 0, done.stderr
+    armed = json.loads(done.stdout)["armed"]
 
-    dead = []
-    for pump, pass_name in sorted(pumps.items()):
-        src = CODE[CODE.index("async function %s(){" % pump):]
-        src = src[:src.index(chr(10) + "}") + 2]
-        js = (
-            "let armed = 0;"
-            + "globalThis.setTimeout = () => { armed++; return 0; };"
-            + "globalThis.looking = () => true;"
-            + "globalThis.pause = () => 100;"
-            + "globalThis.SLOW_MS = 400;"
-            + "globalThis.%s = async () => { throw new Error('boom'); };" % pass_name
-            + chr(10) + src + chr(10)
-            + "%s().catch(() => {}).then(() => " % pump
-            + "process.stdout.write(JSON.stringify({armed})));"
-        )
-        done = subprocess.run([node, "-e", js], capture_output=True, text=True,
-                              encoding="utf-8", timeout=30)
-        assert done.returncode == 0, (pump, done.stderr)
-        if json.loads(done.stdout)["armed"] != 1:
-            dead.append(pump)
-
-    assert not dead, (
-        "these pumps do not re-arm when their pass throws, so they stop for the "
-        "life of the page instead of skipping one turn: %s" % dead)
+    assert sorted(armed) == [100, 2000], (
+        "a pump whose pass throws does not re-arm, so it stops for the life of "
+        "the page instead of skipping one turn; or the pause was not read "
+        "from the function it was given: %r" % armed)
 
 
 def test_a_page_older_than_the_server_says_so_instead_of_going_quiet():
@@ -674,7 +684,7 @@ def test_a_page_older_than_the_server_says_so_instead_of_going_quiet():
     js = (whole("async function door(") + chr(10)
           + whole("function readStatus(") + chr(10)
           + whole("function outOfDate(") + chr(10)
-          + "let notices = [], vanished = false, outdated = false, status = 200;\nglobalThis.at = p => p;\nglobalThis.orphan = (kind, t) => notices.push(t);\nglobalThis.vanish = () => { vanished = true; };\nglobalThis.fetch = async () => ({status, ok: status >= 200 && status < 300});\n(async () => {\n  const out = {};\n  status = 200; await door('/live/browsers?s=x'); out.afterOk = notices.length;\n  status = 404; await door('/live/address?s=x');\n  out.afterFirst = notices.length; out.text = notices[0] || '';\n  await door('/live/address?s=x'); out.afterSecond = notices.length;\n  status = 410;\n  try { await door('/chat/send?s=x'); } catch (e) { out.threw = true; }\n  out.vanished = vanished;\n  process.stdout.write(JSON.stringify(out));\n})();")
+          + "let notices = [], vanished = false, outdated = false, status = 200;\nglobalThis.at = p => p;\nglobalThis.scoped = () => true;\nglobalThis.orphan = (kind, t) => notices.push(t);\nglobalThis.vanish = () => { vanished = true; };\nglobalThis.fetch = async () => ({status, ok: status >= 200 && status < 300});\n(async () => {\n  const out = {};\n  status = 200; await door('/live/browsers?s=x'); out.afterOk = notices.length;\n  status = 404; await door('/live/address?s=x');\n  out.afterFirst = notices.length; out.text = notices[0] || '';\n  await door('/live/address?s=x'); out.afterSecond = notices.length;\n  status = 410;\n  try { await door('/chat/send?s=x'); } catch (e) { out.threw = true; }\n  out.vanished = vanished;\n  process.stdout.write(JSON.stringify(out));\n})();")
     done = subprocess.run([node, "-e", js], capture_output=True, text=True,
                           encoding="utf-8", timeout=30)
     assert done.returncode == 0, done.stderr
@@ -1506,3 +1516,109 @@ def test_a_result_that_only_repeats_the_row_is_not_drawn_twice():
     assert got["news"] == ["navigated to https://x/ (HTTP 200)"], (
         "a result that says more than the row - here a status - was hidden: %r"
         % (got,))
+
+
+def test_the_default_conversation_id_is_the_servers_and_not_the_pages():
+    """⛔ THE PAGE HELD A SECOND COPY OF `DEFAULT_SESSION_ID`, the literal
+    `'default'`, and nothing kept it in step with the server's. A page that
+    names no conversation asks with no `?s=` and the server answers with its
+    own default by its own rule; the one place the page has to COMPARE against
+    that id - marking the current row in the column - learns it from the
+    listing, which carries it.
+
+    Executed, because the two halves are small functions: `at` adds nothing
+    for a page with no id and the id for one that has it, and `isHere` falls
+    back on what the listing said.
+
+    Known-bad, three: write `|| 'default'` back into `here`; make `at` append
+    `?s=` when there is no id; compare `isHere` against `here` alone.
+    """
+    import json
+    import shutil
+    import subprocess
+
+    import pytest
+
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("needs node to EXECUTE the addressing")
+
+    script = re.sub(r"/\*.*?\*/", "", CODE[CODE.index("<script"):], flags=re.S)
+    assert "'default'" not in script and '"default"' not in script, (
+        "the page declares the server's default conversation id for itself")
+
+    head = CODE[CODE.index("let here = new URLSearchParams"):]
+    head = head[:head.index("let es = null;")]
+    js = ("globalThis.location = {search: ''};" + chr(10) + head + chr(10)
+          + "const out = {};"
+          + "out.bare = at('/live/frame?b=main');"
+          + "out.bareSessions = at('/sessions');"
+          + "defaultId = 'default'; out.mineByDefault = isHere('default');"
+          + "here = 'lavoro'; out.named = at('/chat/send');"
+          + "out.mineNamed = isHere('lavoro'); out.notMine = isHere('default');"
+          + "process.stdout.write(JSON.stringify(out));")
+    done = subprocess.run([node, "-e", js], capture_output=True, text=True,
+                          encoding="utf-8", timeout=30)
+    assert done.returncode == 0, done.stderr
+    got = json.loads(done.stdout)
+
+    assert got["bare"] == "/live/frame?b=main" and got["bareSessions"] == "/sessions", (
+        "a page with no id names one anyway: %r" % got)
+    assert got["named"] == "/chat/send?s=lavoro", got
+    assert got["mineByDefault"] is True, (
+        "on the default page the column marks no row as current: the page does "
+        "not learn the server's id from the listing")
+    assert got["mineNamed"] is True and got["notMine"] is False, got
+
+
+def test_an_empty_stage_asks_the_server_for_nothing():
+    """The empty stage holds the placeholder that says "No browser open", and
+    it is a child of the stage like any other. Until 0.52.0 the frame pump took
+    it in turn, read no id off it, and asked for `/live/frame?b=undefined`
+    twenty-five times a second - a tool call each, refused each, for a stage
+    with nothing on it. Found by starting the product and reading its log,
+    which is where this class of defect lives: no route test sees a pump.
+
+    Executed: `onePass` over a stage holding only the placeholder must call the
+    door zero times, and over one real screen exactly once.
+
+    Known-bad: take the filter off the cells.
+    """
+    import json
+    import shutil
+    import subprocess
+
+    import pytest
+
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("needs node to EXECUTE the frame pump")
+
+    src = CODE[CODE.index("async function onePass(){"):]
+    src = src[:src.index(chr(10) + "}") + 2]
+    js = (
+        "let asked = [];"
+        "const cell = (dataset) => ({dataset, querySelector: () => null});"
+        "const kids = [cell({})];"
+        "globalThis.$ = () => ({children: kids});"
+        "globalThis.frozen = false; globalThis.stage = {turn: 0};"
+        "globalThis.watched = () => 'main'; globalThis.say = () => {};"
+        "globalThis.ageAll = () => {}; globalThis.blank = () => {};"
+        "globalThis.door = async (path) => { asked.push(path); return {status: 204}; };"
+        + chr(10) + src + chr(10)
+        + "(async () => {"
+        "  await onePass(); const empty = asked.length;"
+        "  kids.push(cell({id: 'main'})); await onePass(); await onePass();"
+        "  process.stdout.write(JSON.stringify({empty, then: asked}));"
+        "})();"
+    )
+    done = subprocess.run([node, "-e", js], capture_output=True, text=True,
+                          encoding="utf-8", timeout=30)
+    assert done.returncode == 0, done.stderr
+    got = json.loads(done.stdout)
+
+    assert got["empty"] == 0, (
+        "the pump asked the server for a frame of the placeholder: %r" % got)
+    assert len(got["then"]) == 2 and all("b=main" in p for p in got["then"]), (
+        "with one screen the pump does not ask for that screen and nothing "
+        "else: %r" % got)

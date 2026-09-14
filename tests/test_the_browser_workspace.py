@@ -251,10 +251,10 @@ async def test_looking_at_a_pane_tells_the_agent_nothing():
     """The other half of the same decision, read out of the page: clicking a
     pane changes what YOU see and sends nothing.
 
-    Two different things, and they used to be one value. `focusHere` is the
+    Two different things, and they used to be one value. `stage.focus` is the
     browser the agent drives - it lives on the server and only the agent moves
-    it. `pinned2` is the pane the person is looking at, which is this page's own
-    business. Folding them together is what made a click a command.
+    it. `stage.pinned` is the pane the person is looking at, which is this
+    page's own business. Folding them together is what made a click a command.
 
     Known-bad: have `watchThis` POST anywhere.
     """
@@ -267,80 +267,55 @@ async def test_looking_at_a_pane_tells_the_agent_nothing():
     assert "fetch" not in watch, (
         "clicking a pane sends something to the server, so looking at a browser "
         "moves the agent's hand: %s" % watch.strip()[:120])
-    assert "pinned2" in watch, "the page has no idea of its own of what it is watching"
-    assert "const watched = () => pinned2 || focusHere;" in code, (
+    assert "stage.pinned" in watch, "the page has no idea of its own of what it is watching"
+    assert "const watched = () => stage.pinned || stage.focus;" in code, (
         "the big pane does not follow the agent when nothing is pinned, so it "
         "stops showing the work while the work is happening")
 
 
 # --- the arithmetic, read out of the page -----------------------------------
 
-def test_the_previews_cost_the_same_whether_there_are_two_or_eight():
-    """⛔ THE MEASUREMENT, AS A PROPERTY OF THE CODE. One slow loop taking the
-    panes in turn costs a fixed number of requests a second; a loop per pane
-    costs that many times N, and at eight panes N is what the pipe cannot pay.
+def test_the_workspace_has_no_pump_of_its_own_and_the_strip_is_names():
+    """⛔ THE PREVIEW LOOP IS GONE BECAUSE THE ROW IT REFRESHED COULD NOT HOLD
+    A PICTURE. The stage shows every running browser - up to the two a session
+    can have - so what is left for the strip is the declared one that has not
+    started, and that is a name, not a picture. A loop refreshing pictures in
+    that row, one pane every 400 ms in turn, was a loop over an empty set, with
+    its constant, its counter and its styles.
 
-    Read out of the page because this is a shape, not a value: what has to stay
-    true is that the number of timers does not depend on the number of browsers.
+    What has to stay true is the shape: the page's pumps are started from one
+    place through one scheduler, and nothing in the workspace starts a timer
+    or asks for a picture of its own.
 
-    Known-bad: start a `setTimeout` inside the loop that builds the thumbnails.
+    Known-bad, two: give the chip an `<img>` and a fetch; start a `setTimeout`
+    inside the function that builds it.
     """
-    script = PAGE[PAGE.index("<script"):]
+    code = re.sub(r"/\*.*?\*/", "", PAGE[PAGE.index("<script"):], flags=re.S)
 
-    # The slow loop reschedules ITSELF, once, at a fixed interval.
-    assert re.search(r"setTimeout\(slowTick,\s*SLOW_MS\)", script), (
-        "the slow loop does not reschedule itself at a fixed rate")
-    assert len(re.findall(r"setTimeout\(slowTick", script)) == 1, (
-        "the slow loop is scheduled from more than one place, so its rate is "
-        "no longer one thing")
-
-    # And the function that BUILDS a pane starts no timer of its own.
-    #
-    # ⛔ BOUNDED BY BRACES, not by "up to the next function". The first version
-    # cut from `function thumbFor` to the name of whatever came next, so a
-    # function written between them was read as part of the builder: the wake's
-    # stopwatch tripped it, and a stopwatch that ticks during one click is not
-    # a pane refreshing itself. A slice that moves when unrelated code moves is
-    # a gate that goes red for the wrong reason, which teaches people to widen
-    # it - and the widened version would have stopped seeing the real thing.
-    start = script.index("function thumbFor")
+    start = code.index("function chipFor")
     depth, end = 0, start
-    for i in range(script.index("{", start), len(script)):
-        if script[i] == "{":
+    for i in range(code.index("{", start), len(code)):
+        if code[i] == "{":
             depth += 1
-        elif script[i] == "}":
+        elif code[i] == "}":
             depth -= 1
             if depth == 0:
                 end = i
                 break
-    builder = script[start:end]
+    builder = code[start:end]
+    assert "img" not in builder and "fetch" not in builder and "door(" not in builder, (
+        "the strip draws a picture, which is a second live pane on a pipe the "
+        "agent shares")
     assert "setTimeout" not in builder and "setInterval" not in builder, (
-        "a pane schedules its own refresh, so the cost of the previews grows "
-        "with the number of panes - which is the thing the arithmetic forbids")
+        "a chip schedules its own refresh, so the cost of the strip grows with "
+        "what is on screen")
 
-    # And nothing in the WORKSPACE starts a repeating timer: the previews are
-    # paced by one self-rescheduling loop and nothing else. Scoped to those
-    # functions rather than to the whole page, because the step list and the
-    # Thinking clock legitimately tick and a gate that forbade every interval
-    # would be red on code it was never about.
-    fleet = script[script.index("function thumbFor"):script.index("async function fleetPoll")]
-    assert "setInterval" not in fleet, (
-        "a workspace function repeats on an interval, so the cost of the "
-        "previews grows with what is on screen")
-
-
-def test_a_pane_that_is_not_running_is_never_asked_for_a_picture():
-    """A declared browser that has not started is not a slow pane: asking would
-    START it, 800 MB and seven seconds, to fill a thumbnail nobody asked for.
-
-    Known-bad: drop the filter on `img` in `slowTick` and ask for every pane.
-    """
-    script = PAGE[PAGE.index("<script"):]
-    slow = script[script.index("async function slowTick"):script.index("async function fleetPoll")]
-
-    assert "filter(t => t.querySelector('img'))" in slow, (
-        "the slow loop asks for a picture of every pane, including the ones "
-        "that are only declared - which starts them")
+    # Three pumps, one shape, started from one line.
+    started = re.findall(r"every\(([^,]+), (\w+)\);", code)
+    assert sorted(p for _, p in started) == ["drawFleet", "onePass", "paintWhere"], (
+        "the page's pumps are not the three started through `every`: %r" % started)
+    assert "slowTick" not in code and "SLOW_MS" not in code, (
+        "the preview loop is back, refreshing a row that cannot hold a picture")
 
 
 def test_the_page_declares_no_identifier_twice():
@@ -361,7 +336,7 @@ def test_the_page_declares_no_identifier_twice():
     one script. A real parser would be better and needs a JavaScript engine in
     the test environment.
 
-    Known-bad: rename `nextPane` back to `turn`.
+    Known-bad: declare `let turn` again in the workspace.
     """
     script = PAGE[PAGE.index("<script"):]
     seen, twice = {}, []

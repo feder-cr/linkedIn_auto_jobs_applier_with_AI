@@ -111,5 +111,8 @@ function splitter(){
 }
 
 
-paint(); listen(); tick(); where(); fleetPoll(); slowTick(); splitter();
+paint(); listen(); splitter();
+/* The three pumps, one shape, one place: the frames at the pace the stage
+   asks for, the address every two seconds, the fleet every three. */
+every(pause, onePass); every(2000, paintWhere); every(3000, drawFleet);
 if(!$('rail').hidden) drawChats();

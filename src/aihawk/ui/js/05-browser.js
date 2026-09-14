@@ -56,61 +56,55 @@ $('mode').onclick = (e) => {
    fast as the answers came back, each pane got about 20 frames a second
    whether there was one of them or four, so four panes moved 80 frames a
    second and an action still landed in 49 ms against 40 with a single pane.
-   The pipe is the constraint at eight, not at four.
 
    So the budget is spent deliberately and not to the limit: one screen gets
-   the 25 the engine is asked to produce, two get 20 each, four get 10 each -
-   40 requests a second at most, about a quarter of what the pipe can carry,
-   leaving the rest to the agent whose clicks share it. */
+   the 25 the engine is asked to produce, two get 20 each - 40 requests a
+   second at most, about a quarter of what the pipe can carry, leaving the
+   rest to the agent whose clicks share it. */
 /* And it is paced on the screens that are ACTUALLY on the stage, never on
-   the layout picked. Two browsers in a four-up layout are two browsers: the
-   table this used to be gave them 10 frames a second each because the
-   BUTTON said four, halving the thing the person asked for by reading the
-   wrong number. The ceiling below is the measured budget - 40 requests a
-   second, about a quarter of the pipe - and the top rate is what the engine
-   is asked to produce, so asking for more would make frames to throw away. */
+   a layout: two browsers are two browsers. The ceiling below is the measured
+   budget - 40 requests a second, about a quarter of the pipe - and the top
+   rate is what the engine is asked to produce, so asking for more would make
+   frames to throw away. */
 const TOPRATE = 25, CEILING = 40;
 const fps = (n) => Math.min(TOPRATE, Math.floor(CEILING / n));
 const onScreen = () => Math.max(1, $('stage').children.length);
 const pause = () => Math.round(1000 / (fps(onScreen()) * onScreen()));
 
-/* One scheduler for the whole stage. It used to be two - a fast one for the
-   single live pane and a slow one for the previews - and with a grid that
-   would be two numbers describing one rate, which is how a pace stops being
-   something anybody can read off the page. */
-/* ⛔ THE SCHEDULER CANNOT BE ALLOWED TO DIE, and it died the first time this
-   ran. `ageAll` reached for the age label on the placeholder cell, which has
-   no caption, threw a TypeError, and because the throw was outside the fetch's
-   try the timer at the bottom was never reached: the pump stopped for good, in
-   silence, and what you see then is a pane that never updates - which reads as
-   a server that has stopped answering rather than as a page with a bug in it.
-   The body is a separate function now and the scheduling is the only thing
-   this one does, so no defect inside a pass can take the loop with it. */
-/* ⛔ NOTHING IS POLLED WHILE NOBODY IS LOOKING. Four loops ran flat out in
-   a background tab: the frame pump at up to 40 requests a second, the address
-   every two, the fleet every three, a preview every four hundred
-   milliseconds. That budget was measured against what the pipe can carry
-   while the AGENT is using it - and the agent keeps working when the tab is
-   hidden, which is exactly when the page was still spending its share on
-   pictures nobody could see. The loops keep their rhythm so a page coming
-   back is one tick away from current. */
+/* ⛔ NOTHING IS POLLED WHILE NOBODY IS LOOKING. The loops ran flat out in a
+   background tab: the frame pump at up to 40 requests a second, the address
+   every two seconds, the fleet every three. That budget was measured against
+   what the pipe can carry while the AGENT is using it - and the agent keeps
+   working when the tab is hidden, which is exactly when the page was still
+   spending its share on pictures nobody could see. The loops keep their rhythm
+   so a page coming back is one tick away from current. */
 /* ⛔ AND NOTHING IS POLLED FOR A CONVERSATION THAT NO LONGER EXISTS, which is
    the same gate because it is the same question: is there anything here worth
    asking about. See `vanish`. */
 const looking = () => !document.hidden && !vanished;
 
-/* ⛔ THE RE-ARM SITS IN A `finally`, AND IT IS NOT ONE BELT TOO MANY. A pump
-   that re-arms AFTER the work dies for good on the first exception: it does
-   not skip a turn, it stops. Measured 2026-09-11 on the address bar, where the
-   inner `try` had been taken away while rewriting the function - and the same
-   shape was already latent in two more pumps, whose `try` covered the fetch
-   and not the lines around it. The empty `catch` keeps one turn quiet; the
-   `finally` keeps the chain alive whatever happens, and together they take the
-   question "did I remember the try?" out of every function a chain calls. */
-async function tick(){
-  try { if(looking()) await onePass(); }
-  catch(err){}
-  finally { setTimeout(tick, pause()); }
+/* ⛔ ONE SHAPE FOR EVERY PUMP ON THIS PAGE, AND THE SHAPE IS THE WHOLE
+   CORRECTION. A pump that re-arms AFTER the work dies for good on the first
+   exception: it does not skip a turn, it stops - and what you see then is a
+   pane that never updates, which reads as a server that has stopped answering
+   rather than as a page with a bug in it. Measured 2026-09-11 on the address
+   bar, where the inner `try` had been taken away while rewriting the function,
+   and the same shape was latent in two more pumps whose `try` covered the
+   fetch and not the lines around it. So the re-arm sits in a `finally`: the
+   empty `catch` keeps one turn quiet and the `finally` keeps the chain alive
+   whatever the pass did.
+
+   Written ONCE. Until 0.52.0 this shape was copied out four times, each copy a
+   place to forget the `try` again, and the question "did I remember it?" was
+   asked of every pass a pump called. `pause` is a number, or a function of the
+   moment for the frame pump, whose pace follows how many screens are on the
+   stage. The pass runs only while somebody is looking, see above. */
+function every(pause, pass){
+  (async function turn(){
+    try { if(looking()) await pass(); }
+    catch(err){}
+    finally { setTimeout(turn, typeof pause === 'function' ? pause() : pause); }
+  })();
 }
 
 /* And the moment it is looked at again, before the next tick lands. */
@@ -120,11 +114,17 @@ document.addEventListener('visibilitychange', () => {
   paintWhere(); drawFleet();
 });
 
+/* ⛔ ONLY THE CELLS THAT ARE SCREENS. The empty stage holds the placeholder
+   that says "No browser open", and it is a child like any other: until 0.52.0
+   this pump took it in turn, read no id off it, and asked the server for
+   `/live/frame?b=undefined` twenty-five times a second - a tool call each,
+   refused each, for a stage with nothing on it. Measured by starting the
+   product and reading its log. */
 async function onePass(){
-  const cells = [...$('stage').children];
+  const cells = [...$('stage').children].filter(c => c.dataset.id);
   if(cells.length && !frozen){
-    const cell = cells[turnOf % cells.length];
-    turnOf++;
+    const cell = cells[stage.turn % cells.length];
+    stage.turn++;
     const id = cell.dataset.id;
     if(cell.dataset.blank === '1'){ say(cells.length > 1 ? 'live' : 'idle'); }
     else try {
@@ -151,10 +151,10 @@ async function onePass(){
          goes ON the screen rather than into a tooltip nobody hovers: this
          used to leave the same black rectangle as a pane that had simply not
          drawn yet, which is how a failure got to look like patience.
-         
-         And it is said for EVERY screen, not only the watched one. On a 2x2
-         the three you are not following are exactly the ones whose silence
-         you would otherwise have to guess at. */
+
+         And it is said for EVERY screen, not only the watched one: the one
+         you are not following is exactly the one whose silence you would
+         otherwise have to guess at. */
       else {
         const why = r.status === 503 ? await reason(r) : '';
         setState(cell, 'error', 'the capture failed',
@@ -213,10 +213,10 @@ function setState(cell, state, title, detail){
 }
 
 /* ⛔ A PICTURE THAT HAS STOPPED MUST NOT READ AS ONE THAT IS RUNNING. On a
-   healthy stage every screen is refreshed every 40 to 100 ms, so anything past
+   healthy stage every screen is refreshed every 40 to 50 ms, so anything past
    a couple of seconds means that browser has stopped answering - and the last
-   frame is still sitting there looking alive. Two seconds, because at four
-   screens a round is 100 ms and a hiccup of three or four rounds is not news. */
+   frame is still sitting there looking alive. Two seconds, because a hiccup
+   of a few rounds is not news. */
 function ageAll(cells){
   const now = performance.now();
   for(const c of cells){
@@ -227,9 +227,8 @@ function ageAll(cells){
     const at2 = Number(c.dataset.at || 0), old = at2 && (now - at2) > 2000;
     /* ⛔ ONLY WHEN IT CHANGES. This runs at the end of every pass, so up to
        forty times a second, and it wrote three properties per cell whether or
-       not anything had moved - about 480 DOM writes a second at four screens,
-       for a label that is empty 99% of the time. Assigning '' to textContent
-       still replaces the node's children. */
+       not anything had moved - for a label that is empty 99% of the time.
+       Assigning '' to textContent still replaces the node's children. */
     const says = old ? Math.round((now - at2) / 1000) + 's' : '';
     if(lab.textContent !== says){
       lab.textContent = says;
@@ -260,27 +259,16 @@ function paintUrl(u){
    is the same second-control defect the open/close/focus/wake buttons were
    removed for. The address below is the half anybody read. */
 
-/* ⛔ THE ADDRESS FOLLOWS THE SCREEN YOU ARE LOOKING AT, and with four of them
+/* ⛔ THE ADDRESS FOLLOWS THE SCREEN YOU ARE LOOKING AT, and with two of them
    there is a case where no single address is the honest answer: nobody has
    picked one, so the bar would be showing whichever browser the agent happens
-   to be in while three other pages sit beside it, unnamed. It says how many
+   to be in while the other page sits beside it, unnamed. It says how many
    instead, and how to choose. Once a screen has been clicked the bar follows
-   that one, at any layout. */
+   that one. */
 function severalOpen(n){
   urlEl.textContent = ''; urlEl.className = 'dim'; urlEl.title = '';
   urlEl.append(el('span', null, n + ' pages open'),
                el('span', 'hint', 'click a screen to follow it'));
-}
-
-/* ⛔ THE WORK AND THE TIMER ARE SEPARATE. Changing the layout changes what the address should say, and there is
-   nothing to wait for. While this was one function the bar kept the old answer
-   until the next poll landed - two seconds showing one page's address over four
-   screens. Calling `where` itself from a click would start a SECOND timer
-   chain, which is how a pace stops being one number. */
-async function where(){
-  try { if(looking()) await paintWhere(); }
-  catch(err){}
-  finally { setTimeout(where, 2000); }
 }
 
 /* Which url the address bar says, given the rows the workspace already has.
@@ -302,8 +290,13 @@ function addressOf(rows, who){
   return (row && row.url) || '';
 }
 
+/* ⛔ THE WORK AND THE TIMER ARE SEPARATE. Clicking a screen changes what the
+   address should say, and there is nothing to wait for; while this was one
+   function with its pump the bar kept the old answer until the next poll
+   landed. So this is a pass, called from the click and from its pump alike,
+   and it is scheduled from exactly one place. */
 function paintWhere(){
-  const many = grid > 1 && !pinned2 && onStage().length > 1;
+  const many = stage.grid > 1 && !stage.pinned && onStage().length > 1;
   if(many){ severalOpen(onStage().length); return; }
   const who = watched();
   /* A browser that is not running has no address, and `fleet` already says
@@ -312,8 +305,8 @@ function paintWhere(){
      this asked the tab tool, that tool resolved its browser through `ready`
      and so woke a stopped one - 800 MB and seven seconds for a chip nobody
      clicked twice. Nothing is asked from here at all now. The safety version
-     of the rule still binds the frame pump, the preview row and both cell
-     builders, which ask tools that DO wake. */
-  if(who && !fleet.some(b => b.id === who && b.running)){ paintUrl(''); return; }
-  paintUrl(addressOf(fleet, who));
+     of the rule still binds the frame pump and the cell builders, which ask
+     tools that DO wake. */
+  if(who && !stage.fleet.some(b => b.id === who && b.running)){ paintUrl(''); return; }
+  paintUrl(addressOf(stage.fleet, who));
 }

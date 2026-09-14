@@ -10,8 +10,12 @@ async function drawChats(){
      failed fetch showed if nothing had been drawn yet: a lie in the shape of
      an empty state. `null` is the answer for "I do not know". */
   let rows = null;
-  try { const r = await plainDoor('/sessions', {cache:'no-store'});
-        if(r.ok) rows = (await r.json()).sessions || []; }
+  try { const r = await door('/sessions', {cache:'no-store'});
+        if(r.ok){ const got = await r.json();
+                  rows = got.sessions || [];
+                  /* The server's own name for the conversation a page
+                     with no id is in; see `isHere`. */
+                  defaultId = got.default || defaultId; } }
   catch(err){ rows = null; }
   const box = $('chats');
   box.textContent = '';
@@ -46,7 +50,7 @@ async function drawChats(){
        one conversation a person is actually in was announced to nobody: you
        hear the name from the button and the "current" from a node the reader
        walks straight past. The mark goes on the thing that says the name. */
-    if(s.id === here) open.setAttribute('aria-current','true');
+    if(isHere(s.id)) open.setAttribute('aria-current','true');
 
     /* Switching is a NAVIGATION, not a repaint: the transcript, the picture and
        the stream all belong to the conversation, and the server hands back the
@@ -60,7 +64,7 @@ async function drawChats(){
        it is also what stops the next page load reopening it. */
     open.onclick = () => {
       showRail(false);
-      if(s.id !== here) location.search = '?s=' + encodeURIComponent(s.id);
+      if(!isHere(s.id)) location.search = '?s=' + encodeURIComponent(s.id);
     };
     open.ondblclick = () => renameChat(s.id, s.name || s.id);
     /* ⛔ AND A KEY, because a double click is not a keyboard path and nothing
