@@ -68,12 +68,19 @@ def resume_point(marker: str, epoch: str) -> tuple[int, bool]:
     return int(position) + 1, True
 
 
-#: The answer when there is nothing to say, in the shape of the answer when
-#: there is. The page reads the same fields either way, so an empty reply that
-#: omits a field is a reply the page cannot read - and it is given on paths
-#: that exist precisely because something went wrong or is missing, which is
-#: where a shape written out a second time drifts unnoticed.
-NO_BROWSERS = {"browsers": [], "focus": "", "limit": 0}
+# ⛔ `NO_BROWSERS` STOOD HERE: AN EMPTY WORKSPACE HANDED BACK WHENEVER THE
+# ANSWER COULD NOT BE READ. It was written for a server older than 0.18.0,
+# which answered `browser_list` in prose - and there is no such server to talk
+# to any more: the interface SPAWNS the one it ships with, `python -m aihawk`
+# out of this same package, so the two versions cannot differ. What the
+# constant still did was make a failure look exactly like an empty room. That
+# was survivable while the body carried a `limit` no other path would produce;
+# with `limit` gone in 0.55.0 the fallback became byte-identical to a genuine
+# "nothing is open", so a link that had stopped answering drew the same
+# picture as a session where nobody had opened anything.
+#
+# It is a 503 with the reason now, the same shape `/live/frame` already uses,
+# and the page keeps the stage it has rather than emptying it.
 
 
 # --- which conversation -------------------------------------------------------
@@ -352,17 +359,22 @@ async def browsers(request: Request) -> JSONResponse:
     """
     seen = await which(request)
     try:
-        got = json.loads(await seen.link.call_text("browser_list"))
-    except Exception:
-        # An older server answered this in prose. The workspace then draws
-        # nothing rather than half of something, and the single live pane -
-        # which does not need this - keeps working.
-        return JSONResponse(NO_BROWSERS)
+        said = await seen.link.call_text("browser_list")
+    except Exception as exc:
+        return JSONResponse({"error": str(exc)[:200]}, status_code=503)
+    try:
+        got = json.loads(said)
+    except ValueError:
+        got = None
     if not isinstance(got, dict):
-        return JSONResponse(NO_BROWSERS)
+        # Said rather than smoothed over: this is the tool answering something
+        # other than its own JSON, which is either an error result carrying its
+        # reason as text or a server that is not this one. Both are worth a
+        # sentence; neither is an empty workspace.
+        return JSONResponse({"error": said[:200] or "the workspace could not be read"},
+                            status_code=503)
     return JSONResponse({"browsers": got.get("browsers") or [],
-                         "focus": got.get("focus") or "",
-                         "limit": got.get("limit") or 0})
+                         "focus": got.get("focus") or ""})
 
 
 # ⛔ `/live/address` STOOD HERE, AND THIS BRANCH IS WHAT MADE IT A DUPLICATE.

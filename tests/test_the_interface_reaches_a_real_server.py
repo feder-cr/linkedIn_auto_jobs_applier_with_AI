@@ -103,25 +103,38 @@ async def test_the_workspace_is_answered_by_the_server_and_not_by_the_interface(
 
     ⛔ THE FIRST VERSION OF THIS ASSERTED THE TWO ROLE NAMES AND WAS WRONG
     ABOUT THE PRODUCT, not about the plumbing: `browser_list` reports the
-    browsers that EXIST, and with nothing opened that list is empty. The
-    fields around it are what identifies the source. `limit` is
-    `MAX_BROWSERS_PER_SESSION`, a constant that lives in the server module and
-    is written nowhere in the interface, so reading 2 here means the answer
-    travelled from there.
+    browsers that EXIST, and with nothing opened that list is empty.
+
+    ⛔ AND THE SECOND VERSION IDENTIFIED THE SOURCE BY A FIELD THAT WAS A
+    CONSTANT. It read `limit == MAX_BROWSERS_PER_SESSION`, a 2 that lives in
+    the server module and nowhere in the interface - and that field went in
+    0.55.0, with every other value the answer could not help but agree on.
+    What identifies the source now is that there is NO answer the interface
+    can invent: the route used to smooth an unreadable reply into an empty
+    workspace with a 200, and it says 503 with the reason instead. So a 200
+    here is a JSON object that came down the pipe from a real `python -m
+    aihawk`, and `focus` being "" is that server saying nothing is open rather
+    than a default written on this side.
+
+    Known-bad: put the fallback back. This still passes on its first two
+    assertions and fails on the third, which is the one that says an empty
+    room is not the same answer as a broken pipe.
     """
     client, _ = live
     got = await asyncio.wait_for(client.get("/live/browsers"), 20)
     assert got.status_code == 200, got.text[:300]
     body = got.json()
-    assert set(body) >= {"browsers", "focus", "limit"}, body
+    assert set(body) == {"browsers", "focus"}, body
     assert body["browsers"] == [], (
         "nothing was opened, so nothing should be listed: %s" % body)
-    assert body["focus"] == "main", body
-    from aihawk.mcp import server as _server
-    assert body["limit"] == _server.MAX_BROWSERS_PER_SESSION, (
-        "the ceiling the page was told, %r, is not the server's own %r, so "
-        "this answer did not come from the server"
-        % (body["limit"], _server.MAX_BROWSERS_PER_SESSION))
+    assert body["focus"] == "", (
+        "the server answered a browser it is working in while nothing is "
+        "open: %s" % body)
+
+    from aihawk import routes as _routes
+    assert not hasattr(_routes, "NO_BROWSERS"), (
+        "the interface has an empty-workspace answer of its own again, so a "
+        "200 from this route no longer proves the server said anything")
 
 
 async def test_the_client_really_is_a_separate_process(live):

@@ -19,7 +19,15 @@
    They were the same value until somebody said everything should be commanded
    from the chat, and folding them together is what made clicking a pane a
    COMMAND. Now the big pane follows the agent, which is what you want while it
-   works, and looking somewhere else is a choice that sticks until you undo it. */
+   works, and looking somewhere else is a choice that sticks until you undo it.
+
+   ⛔ AND THE PARAGRAPH ABOVE WAS TRUE OF THE PAGE AND FALSE OF THE SERVER
+   UNTIL 0.55.0. `focus` arrived as the constant `main`, because the tools
+   that moved a focus went with the eight-browser session and nothing replaced
+   them, so the dot below reading `the agent is working here` sat on `main`
+   while the agent typed into `support`. The server answers where the last
+   command acted now, so what this file has always said is finally what
+   arrives. */
 const stage = {fleet: [], focus: '', pinned: null, grid: 1, turn: 0};
 const watched = () => stage.pinned || stage.focus;
 

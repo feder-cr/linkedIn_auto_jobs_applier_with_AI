@@ -315,12 +315,14 @@ async def browser_close(browser: Browser | None = None) -> str:
 @mcp.tool(annotations=_says("List the browsers", read_only=True, open_world=False))
 async def browser_list() -> str:
     """Which of the two browsers are open, where each one is, and which one
-    the commands that name none go to.
+    you are working in.
 
-    Answers JSON: `focus`, `limit`, `note`, and `browsers` - each with `id`,
-    `focused`, `url` (the page it is on) and `urls` (every page it holds,
-    which is more than one only when a site opened one). Only open browsers
-    are listed, so every row is one you can act on.
+    Answers JSON: `focus`, the browser your last command acted in, or "" when
+    none is open; `note`, which says how many are open and that a command
+    naming no browser goes to `main`; and `browsers` - each row `id`, `url`
+    (the page it is on) and `urls` (every page it holds, which is more than
+    one only when a site opened one). Only open browsers are listed, so every
+    row is one you can act on.
 
     Starts nothing: it reports what is open, so asking is free.
     """

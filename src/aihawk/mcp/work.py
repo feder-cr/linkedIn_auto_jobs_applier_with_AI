@@ -94,6 +94,10 @@ class Work:
         #: The browsers that are open, by role, and what each was launched with.
         self._open: dict[str, StealthSession] = {}
         self._launched: dict[str, dict] = {}
+        #: The role the last command was aimed at. See `focused()`, which is
+        #: the only reader and which never hands out a browser that is not
+        #: open.
+        self._acted = DEFAULT_BROWSER_ID
         #: One lock around opening and closing: the live pane and the agent
         #: talk to this server at the same time, and two opens of one role
         #: racing would leave a browser nobody holds a handle to.
@@ -108,6 +112,39 @@ class Work:
     def launched_with(self, role: str) -> Optional[dict]:
         """What this browser was started with, for callers that report it."""
         return self._launched.get(role)
+
+    def focused(self) -> str:
+        """The browser the agent is working in: the one the last command was
+        aimed at, or "" when none is open.
+
+        ⛔ IT IS A FACT NOW, AND UNTIL 0.55.0 IT WAS THE CONSTANT `main`. The
+        listing answered `focus: "main"` from a literal, because the tools that
+        moved a focus went with the eight-browser session on 2026-09-11 and
+        nothing replaced them. The interface believed it: it draws a dot on
+        that browser reading `the agent is working here`, so with `support`
+        open the dot sat on `main` while the agent typed into the helper, and
+        the screen marked current was `main` whatever the agent was doing.
+        Saying where the work is happening is the whole job of that dot, and
+        it was the one thing it could not do.
+
+        The fact was already in `acting`, which every command that touches a
+        page goes through and which knows the role of each one; it was simply
+        thrown away. Nothing else had to be built.
+
+        ⛔ AND IT NEVER NAMES A BROWSER THAT IS NOT OPEN. A browser can be
+        closed or found gone after it was last acted in, and a focus pointing
+        at one would put the dot on a screen the stage no longer draws. The
+        fallback is `roles()` in order, so `main` wins whenever it is open -
+        which is also where a command that names none goes.
+
+        What this does NOT say is where an unnamed command lands. That is
+        always `main`, it is a constant of the two roles rather than a fact
+        about this moment, and it is said in `note` and in the tool's own
+        description.
+        """
+        if self._acted in self._open:
+            return self._acted
+        return next(iter(self.roles()), "")
 
     def remembered(self) -> Optional[dict]:
         """Who `main` was the last time this session opened it, from the file.
@@ -231,6 +268,10 @@ class Work:
                     % (role, exc))
             self._open[role] = session
             self._launched[role] = settings
+            # Opening a browser is working in it: a helper opened mid-task is
+            # where the next few commands are going, and the pane should say
+            # so before the first of them arrives rather than after.
+            self._acted = role
             if role == DEFAULT_BROWSER_ID:
                 self.remember()
         return "the %s browser is open. %s" % (role, plan.describe(
@@ -311,6 +352,14 @@ class Work:
         """
         at = role or DEFAULT_BROWSER_ID
         session = self.session(at)
+        # ⛔ AFTER THE BROWSER ANSWERED FOR ITSELF, NOT BEFORE. `session`
+        # refuses a role that is not open and forgets one that is gone, so
+        # recording here means the focus only ever moves to a browser that was
+        # there to be worked in. Recorded before the action rather than after
+        # it because a click that FAILS still happened in that browser, and
+        # that is exactly the moment somebody watching wants to be looking at
+        # the right screen.
+        self._acted = at
         try:
             return await fn(session, *args, **kwargs)
         except TargetClosedError:
@@ -322,21 +371,23 @@ class Work:
         """Which browsers are open, where each one is, and which one commands
         that name none go to. Starts nothing.
 
-        One row per open browser: `id`, `focused`, `url` (the page it is on)
-        and `urls` (every page it holds). `urls` is a list, or None for "open
-        and unreadable" - the two are different answers and the pane draws
-        them differently.
+        One row per open browser: `id`, `url` (the page it is on) and `urls`
+        (every page it holds). `urls` is a list, or None for "open and
+        unreadable" - the two are different answers and the pane draws them
+        differently.
 
-        ⛔ THERE IS NO `running` FIELD, AND THERE WAS ONE UNTIL 0.54.0 SAYING
-        `true` ON EVERY ROW IT COULD EVER PRODUCE. It meant something while a
-        session could hold a browser that was DECLARED and not started; since
-        0.53.0 a browser is open or it is not here, and a listing that answers
-        a constant invites a reader to branch on it - which the page did, in
-        three places, filtering a list that could not contain the other case.
-        A field whose value is a property of the answer belongs in the
-        description, not in the rows.
+        ⛔ AND THE ROWS CARRY NOTHING DERIVABLE FROM THE ANSWER AROUND THEM.
+        `running` went in 0.54.0 saying `true` on every row it could produce;
+        `focused` and `limit` went the same way in 0.55.0. `focused` was
+        `id == focus` with `focus` named two lines above it, and `limit` was
+        the constant 2 that no reader in this product ever read - the
+        interface never mentioned the word, and the sentence in `note`
+        already says how many of how many. A fact that is a property of the
+        answer belongs in the description; a fact that is derivable from
+        another field belongs to that field alone, or the two get a chance to
+        disagree.
         """
-        here = DEFAULT_BROWSER_ID
+        here = self.focused()
         rows = []
         for name in self.roles():
             session = self._open[name]
@@ -356,23 +407,27 @@ class Work:
                 # pages cannot be read is not a browser with no pages, and a pane
                 # drawing "nothing open" over a live window would be a lie.
                 # `urls` is None for exactly this, and the pane draws it apart.
-                rows.append({"id": name, "focused": name == here,
-                             "url": "", "urls": None})
+                rows.append({"id": name, "url": "", "urls": None})
                 continue
             urls = [p["url"] or "" for p in pages]
             # The ACTIVE page rather than the first: a site that opens one of
             # its own makes those two different, and the page a command drives
             # is the newest live one.
             shown = next((p for p in pages if p["active"]), pages[0] if pages else None)
-            rows.append({"id": name, "focused": name == here,
+            rows.append({"id": name,
                          "url": (shown["url"] or "") if shown else "", "urls": urls})
         return {
             "focus": here,
-            "limit": MAX_BROWSERS_PER_SESSION,
             "browsers": rows,
-            "note": (NOT_OPEN % here if not rows else
+            # ⛔ THE NOTE NAMES `main` FROM THE CONSTANT, NEVER FROM `here`.
+            # They were the same string until 0.55.0 and this line simply used
+            # whichever was to hand. Now `here` is where the agent last acted,
+            # so reading it here would answer "commands that name none go to
+            # support" the moment the helper had been touched - which is false,
+            # and false about the one rule a caller uses to leave `browser` out.
+            "note": (NOT_OPEN % DEFAULT_BROWSER_ID if not rows else
                      "%d of %d browsers. Commands that name none go to %s."
-                     % (len(rows), MAX_BROWSERS_PER_SESSION, here)),
+                     % (len(rows), MAX_BROWSERS_PER_SESSION, DEFAULT_BROWSER_ID)),
         }
 
     async def status(self, role: str) -> str:

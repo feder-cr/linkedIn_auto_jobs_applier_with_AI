@@ -33,16 +33,18 @@ class _Tool:
 
 
 #: ⛔ NO `session` KEY. MCP stopped having a session concept on 2026-09-11:
-#: `browser_list` answers `focus`, `limit`, `browsers` and `note`, never which
-#: piece of work it is - that is decided by which PROCESS answered, not by a
-#: field in the reply.
+#: `browser_list` answers `focus`, `browsers` and `note`, never which piece of
+#: work it is - that is decided by which PROCESS answered, not by a field in
+#: the reply. `limit` went in 0.55.0 with the per-row `focused`: the first was
+#: the constant 2 and no reader in this product ever read it, the second was
+#: the row id compared against the `focus` on the line above.
 FLEET = {
-    "focus": "main", "limit": 2,
+    "focus": "main",
     "browsers": [
-        {"id": "main", "focused": True, "urls": ["http://a/"]},
-        {"id": "posta", "focused": False, "urls": ["http://b/"]},
+        {"id": "main", "urls": ["http://a/"]},
+        {"id": "posta", "urls": ["http://b/"]},
     ],
-    "note": "2 of 2 browsers.",
+    "note": "2 of 2 browsers. Commands that name none go to main.",
 }
 
 
@@ -132,7 +134,7 @@ async def test_the_workspace_is_read_from_the_server_like_any_other_client():
     got = client.get("/live/browsers?s=lavoro").json()
 
     assert [b["id"] for b in got["browsers"]] == ["main", "posta"]
-    assert got["focus"] == "main" and got["limit"] == 2
+    assert got["focus"] == "main"
     assert any(name == "browser_list" for name, _ in link.calls)
 
 
@@ -174,20 +176,28 @@ async def test_the_workspace_asks_the_one_question_that_starts_nothing():
         "starts nothing: %r" % link.calls)
 
 
-async def test_an_older_server_leaves_the_workspace_empty_instead_of_breaking_the_pane():
-    """`browser_list` answered prose before 0.18.0. A page that cannot parse it
-    draws no previews and keeps the single live pane working, which is the half
-    that does not depend on this.
+async def test_an_unreadable_answer_says_so_instead_of_drawing_an_empty_room():
+    """⛔ A FAILURE THAT LOOKS LIKE AN EMPTY WORKSPACE IS THE WORST OF THE
+    THREE STATES. This used to answer 200 with an empty fleet, for a server
+    older than 0.18.0 that replied in prose - and there is no such server to
+    talk to: the interface spawns the one it ships with, out of this same
+    package. What the smoothing still did was hide a link that had stopped
+    answering behind the picture of a session where nobody had opened
+    anything, which is exactly the shape of [B202] one layer up.
 
-    Known-bad: let the route raise on unparsable output.
+    Known-bad, two: answer 200 with an empty fleet again, or let the route
+    raise so the pane gets a 500 with no sentence in it.
     """
     link, sessions, client = _app()
     await (await sessions.get("lavoro")).send("start something")
 
     link.answers["browser_list"] = "the main browser is open, one of two."
-    got = client.get("/live/browsers?s=lavoro").json()
+    got = client.get("/live/browsers?s=lavoro")
 
-    assert got == {"browsers": [], "focus": "", "limit": 0}
+    assert got.status_code == 503, (
+        "an answer the route could not read was drawn as an empty workspace")
+    assert "the main browser is open" in got.json()["error"], (
+        "the 503 does not carry what the tool actually said")
 
 
 # --- which browser a pane is watching ---------------------------------------

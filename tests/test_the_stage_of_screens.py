@@ -1,4 +1,4 @@
-"""One screen, or two, or four, and which browsers are on them.
+"""One screen, or two, and which browsers are on them.
 
 ⛔ THE NUMBER OF SCREENS IS A MEASURED DECISION AND NOT A PREFERENCE. Every
 frame goes down the same stdio pipe as every action, behind the same lock, so a
@@ -9,13 +9,19 @@ the capture already runs inside the engine and the server hands over the latest
 picture rather than taking one - and four panes polled flat out delivered 80
 frames a second in total, about 20 each, with an action still landing in 49 ms
 against 40 with a single pane. Four is affordable; eight would saturate the
-pipe. That is why the control room's vocabulary, 1 / 2 / 4, is the one on
-offer.
+pipe.
+
+⛔ AND THE MEASUREMENT IS WHY THE NUMBER IS NOT A CHOICE ANY MORE. It was taken
+when a session could hold up to eight browsers and a picker offered 1 / 2 / 4;
+a session is `main` plus, while it is needed, `support`, so the layout follows
+the fleet - two screens when the helper is up, one when it is not - and there
+is nothing for a person to set. The numbers stay because they are what says
+two panes are affordable.
 
 What is executed here is the part that decides WHICH browsers are on the stage
 and in what order, because that is the half a string scan cannot see: it is
 arithmetic over the fleet, and getting it wrong shows up as a screen that is
-blank, or as the browser you clicked never coming to the front.
+blank, or as two panes that swap places while somebody is watching them.
 """
 from __future__ import annotations
 
@@ -81,20 +87,33 @@ pytestmark = pytest.mark.skipif(
     not NODE, reason="needs node to EXECUTE the stage chooser")
 
 
-def test_one_screen_shows_the_one_being_watched():
-    assert on_stage(up("a", "b", "c"), grid=1, focus="b") == ["b"]
-    assert on_stage(up("a", "b", "c"), grid=1, focus="b", pinned="c") == ["c"]
+def test_one_screen_is_the_one_browser_there_is():
+    """The layout follows the fleet - one browser, one screen - so at one-up
+    there is never a choice to make about which one it is."""
+    assert on_stage(up("a"), grid=1) == ["a"]
+    assert on_stage(up("a"), grid=1, focus="a", pinned="a") == ["a"]
 
 
-def test_the_watched_one_comes_first_so_clicking_brings_it_to_the_front():
-    """⛔ THE POINT OF THE WHOLE THING. Clicking a screen sets who is watched,
-    and at one-up that has to be the screen that fills the stage - which only
-    works if the order puts it first.
+def test_the_order_is_the_server_s_and_does_not_move_with_who_is_watched():
+    """⛔ THE WATCHED SCREEN IS MARKED, NEVER MOVED, AND THAT CHANGED IN
+    0.55.0 WITH THE THING THAT MADE IT MATTER.
 
-    Known-bad: return the fleet in server order and slice it.
+    It used to be sorted to the front, which meant something while a session
+    held up to eight browsers and the stage showed fewer than all of them:
+    clicking a chip brought that browser onto a screen. The stage now shows
+    two screens exactly when there are two browsers, so the sort could only
+    decide which of two equal cells sat on the left - and in this same version
+    `focus` stopped being the constant `main` and became the browser the agent
+    last acted in. Together those two would have swapped the panes under the
+    eye of whoever was watching, every time the agent moved between them.
+
+    Known-bad: put the watched one first again. The second assertion, and only
+    the second, goes red - which is the shape of the defect: it is invisible
+    while nobody is watching a second browser.
     """
-    assert on_stage(up("a", "b", "c"), grid=2, focus="c")[0] == "c"
-    assert on_stage(up("a", "b", "c", "d"), grid=2, pinned="d") == ["d", "a"]
+    assert on_stage(up("main", "support"), grid=2, focus="main") == ["main", "support"]
+    assert on_stage(up("main", "support"), grid=2, focus="support") == ["main", "support"]
+    assert on_stage(up("main", "support"), grid=2, pinned="support") == ["main", "support"]
 
 
 def test_every_browser_the_server_lists_gets_a_screen():
@@ -249,3 +268,48 @@ def test_the_pump_cannot_be_killed_by_a_bad_pass():
         and "setTimeout(turn" in pump.group(1), (
         "the scheduler does not guard the pass it runs, so one bad frame ends "
         "the loop: %s" % pump.group(1))
+
+
+def fleet_after(ok: bool, body: dict, before) -> dict:
+    """What `drawFleet` leaves on the stage, given what the poll answered."""
+    i = PAGE.index("async function drawFleet()")
+    js = (
+        "const stage = {fleet: %s, focus: 'main', pinned: null, grid: 2, turn: 0};\n"
+        "function drawStage(){}\n"
+        "async function door(){ return {ok: %s, json: async () => (%s)}; }\n"
+        % (json.dumps(before), "true" if ok else "false", json.dumps(body))
+        + PAGE[i:PAGE.index(chr(10) + "}", i) + 2]
+        + "\ndrawFleet().then(() => process.stdout.write(JSON.stringify("
+          "{ids: stage.fleet.map(b => b.id), focus: stage.focus, grid: stage.grid})));")
+    done = subprocess.run([NODE, "-e", js], capture_output=True, text=True,
+                          encoding="utf-8", timeout=30)
+    assert done.returncode == 0, "drawFleet threw:\n%s" % done.stderr
+    return json.loads(done.stdout)
+
+
+def test_a_poll_that_failed_leaves_the_workspace_it_already_has():
+    """⛔ ONE UNANSWERED QUESTION USED TO TEAR DOWN EVERY SCREEN. The failure
+    branch fell through with an empty fleet, so a server restarting or a link
+    that dropped drew the empty room that says `No browser open` over browsers
+    that were open the whole time - and the next poll three seconds later put
+    them back. A workspace that blinks out and in is worse than either state,
+    because nothing on screen says which one is true.
+
+    It matters more since 0.55.0, when the route stopped smoothing an
+    unreadable answer into an empty workspace and started saying 503: that
+    status is exactly what arrives here as `!r.ok`.
+
+    Known-bad: drop the `return` and let the old `{browsers: []}` default fall
+    through. The first assertion goes red.
+    """
+    two = [{"id": "main", "urls": ["http://a/"]},
+           {"id": "support", "urls": ["http://b/"]}]
+
+    held = fleet_after(False, {}, two)
+    assert held["ids"] == ["main", "support"], (
+        "a failed poll emptied the stage: %r" % (held,))
+    assert held["grid"] == 2, "and took the layout with it: %r" % (held,)
+
+    moved = fleet_after(True, {"browsers": two[:1], "focus": "main"}, two)
+    assert moved["ids"] == ["main"], (
+        "an answer that DID arrive has to be believed: %r" % (moved,))

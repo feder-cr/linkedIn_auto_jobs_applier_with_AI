@@ -272,9 +272,14 @@ def test_the_address_bar_says_where_the_browser_being_watched_is():
     on every CI runner, and the function is pure, so it needs no DOM at all.
 
     Known-bad, and both are one character away: read `urls[0]` instead of
-    `url`, which agrees until a site opens a second page; or answer the
-    focused row whatever was asked for, which names a browser nobody is
-    looking at.
+    `url`, which agrees until a site opens a second page; or answer the first
+    row whatever was asked for, which names a browser nobody is looking at.
+
+    ⛔ AND IT TAKES A NAME OR IT ANSWERS NOTHING, since 0.55.0. It used to
+    fall back on a `focused` flag on each row - which was that row's id
+    compared against the `focus` beside it, the same fact twice on one wire -
+    and that flag is gone. Who is being watched is `pinned || focus`, decided
+    in the caller; with nobody to watch there is no address to show.
     """
     import json
     import shutil
@@ -290,20 +295,21 @@ def test_the_address_bar_says_where_the_browser_being_watched_is():
     body = body[:body.index(chr(10) + "}") + 2]
 
     rows = [
-        {"id": "main", "focused": True,
+        {"id": "main",
          "url": "https://b.example/x",
          "urls": ["https://a.example/", "https://b.example/x"]},
-        {"id": "support", "focused": False,
+        {"id": "support",
          "url": "https://mail.example/", "urls": ["https://mail.example/"]},
     ]
     js = body + "%sconst rows = %s;%s" % (chr(10), json.dumps(rows), chr(10)) + """
 const out = {
-  focused: addressOf(rows, ''),
+  live: addressOf(rows, 'main'),
   watched: addressOf(rows, 'support'),
   unknown: addressOf(rows, 'nope'),
-  empty: addressOf([], ''),
-  notalist: addressOf(null, ''),
-  nourl: addressOf([{id: 'x', focused: true}], ''),
+  nobody: addressOf(rows, ''),
+  empty: addressOf([], 'main'),
+  notalist: addressOf(null, 'main'),
+  nourl: addressOf([{id: 'x'}], 'x'),
 };
 process.stdout.write(JSON.stringify(out));
 """
@@ -312,11 +318,14 @@ process.stdout.write(JSON.stringify(out));
     assert done.returncode == 0, done.stderr
     got = json.loads(done.stdout)
 
-    assert got["focused"] == "https://b.example/x", (
+    assert got["live"] == "https://b.example/x", (
         "the bar shows a page the browser is not on: with two pages open it read the first one in the list instead of the live one")
     assert got["watched"] == "https://mail.example/", (
-        "a pinned pane was told the focused browser's address, which is a wrong answer that looks exactly like a right one")
+        "a pinned pane was told another browser's address, which is a wrong answer that looks exactly like a right one")
     assert got["unknown"] == "", "a browser that is not in the fleet has no address"
+    assert got["nobody"] == "", (
+        "with nobody being watched it answered a row anyway, which is the flag "
+        "this fallback used to read coming back under another name")
     assert got["empty"] == "" and got["notalist"] == "" and got["nourl"] == "", (
         "an empty or unreadable fleet has to leave the bar blank rather than throw")
 
