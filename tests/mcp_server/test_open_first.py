@@ -258,6 +258,14 @@ async def test_the_file_holds_who_main_is_and_never_the_helper_or_this_launch(wo
     for launch_only in ("headless", "binary_path"):
         assert launch_only not in saved["browsers"]["main"], (
             "%s is this launch's to decide, not the file's" % launch_only)
+    # ⛔ THE WHOLE DOCUMENT, for the reason the listing's rows are asserted
+    # whole: a field nobody needs is a field somebody will read. `name` sat
+    # here until 0.56.0 holding a copy of `id`, kept on the argument that an
+    # older build would expect it - and the only thing that ever read it,
+    # `known()`, went with the `session_list` tool. Nothing asserted the set
+    # of keys, so nothing noticed.
+    assert set(saved) == {"id", "saved", "focus", "browsers"}, (
+        "the saved session carries something nobody reads: %r" % sorted(saved))
 
 
 async def test_the_file_is_written_at_open_and_not_on_every_command(work, monkeypatch):

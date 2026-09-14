@@ -31,7 +31,8 @@ import time
 from pathlib import Path
 from typing import List, Optional
 
-from .storage import home, safe_name as _safe, write_atomically
+from .storage import (erase as _erase, home, read_json,
+                      safe_name as _safe, write_atomically)
 
 def _chats_dir() -> Path:
     return home() / "chats"
@@ -60,10 +61,7 @@ def save_chat(session_id: str, name: str, history: List[dict],
 
 def load_chat(session_id: str) -> Optional[dict]:
     """One conversation as it was written, or None if there is nothing to read."""
-    try:
-        return json.loads(chat_path(session_id).read_bytes().decode("utf-8"))
-    except Exception:
-        return None
+    return read_json(chat_path(session_id))
 
 
 def known_chats() -> List[dict]:
@@ -93,12 +91,6 @@ def known_chats() -> List[dict]:
     return out
 
 
-def erase_chat(session_id: str) -> bool:
-    """Forget a saved conversation. Answers whether there was one."""
-    try:
-        chat_path(session_id).unlink()
-        return True
-    except FileNotFoundError:
-        return False
-    except Exception:
-        return False
+def erase_chat(session_id: str) -> None:
+    """Forget a saved conversation."""
+    _erase(chat_path(session_id))

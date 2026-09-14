@@ -109,10 +109,6 @@ class Work:
         """The browsers that are open, by role."""
         return sorted(self._open)
 
-    def launched_with(self, role: str) -> Optional[dict]:
-        """What this browser was started with, for callers that report it."""
-        return self._launched.get(role)
-
     def focused(self) -> str:
         """The browser the agent is working in: the one the last command was
         aimed at, or "" when none is open.
