@@ -49,7 +49,7 @@ def capped_elements(head: dict, elements: list, limit: int = DEFAULT_MAX_CHARS) 
     with a slice of the JSON string inside when it was too long. The slice is
     not parseable, so on any page above the cap the caller received zero usable
     elements. Not the first fifty: zero. Measured on a page with 160 elements at
-    about 112 characters each, the default cap of 6000 returned nothing at all,
+    about 112 characters each, a 6000-character cap returned nothing at all,
     and a real results page passes that easily.
 
     So the list is what gets shortened, in document order, and the answer says

@@ -24,7 +24,7 @@ MCP server and are only choosing which one, the page you want is
 ## The price, measured
 
 Enumerated from our own browser server's tool registry on 2026-09-15 and counted
-with a tokenizer: **16 tools, 3,159 tokens** from 8,105 characters of
+with a tokenizer: **16 tools, 3,141 tokens** from 8,040 characters of
 description, sent again on every single turn of every session. A forty-turn session spends around 128,000 tokens restating what
 the tools are, before a page has been read.
 
@@ -73,7 +73,7 @@ One question, and it is not about your tooling:
 If yes, everything above beats MCP, and the plain API beats all of them. If no,
 because the page is different every time, because the answer determines the next
 call, because a hundred sources have a hundred shapes, then a model choosing
-among declared tools is worth 3,159 tokens a turn and there is no cheaper way to
+among declared tools is worth 3,141 tokens a turn and there is no cheaper way to
 get it.
 
 The second question is narrower and decides between MCP and native function
@@ -116,7 +116,7 @@ definitions directly.
 not to bet on that. It is that a standard being good does not make it the right
 shape for one particular job.
 
-**What does MCP cost?** Measured on ours: 3,159 tokens on every turn for 16
+**What does MCP cost?** Measured on ours: 3,141 tokens on every turn for 16
 tools. Yours scales with description length and argument schemas, not just tool
 count.
 
@@ -126,7 +126,7 @@ count.
 
 ## Sources
 
-- This project's own MCP server, enumerated through its tool registry on 2026-09-15: 16 tools, 3,159 tokens for the complete definitions, counted with `tiktoken` rather than estimated.
+- This project's own MCP server, enumerated through its tool registry on 2026-09-15: 16 tools, 3,141 tokens for the complete definitions, counted with `tiktoken` rather than estimated.
 - [The MCP transports overview](https://modelcontextprotocol.io/docs/concepts/transports), retrieved 2026-09-13, for what the protocol does and does not define.
 
 ---

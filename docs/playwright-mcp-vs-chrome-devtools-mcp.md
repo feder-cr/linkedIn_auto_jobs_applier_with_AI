@@ -78,8 +78,8 @@ end of it.
 
 Whichever you register, the tool descriptions ride in the model's context on
 every turn, and so does each one's argument schema. For calibration, measured on
-our own server's registry on 2026-09-15: **16 tools, 8,105 characters of
-description, 3,159 tokens per turn.** Register two browser servers side by side
+our own server's registry on 2026-09-15: **16 tools, 8,040 characters of
+description, 3,141 tokens per turn.** Register two browser servers side by side
 and you are paying that twice, on every turn, plus giving the model overlapping
 verbs to choose between.
 

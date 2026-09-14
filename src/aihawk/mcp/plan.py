@@ -95,12 +95,29 @@ class SessionPlan:
                         exit_note=self.exit, warnings=self.warnings)
 
 
+def _asked(explicit: Optional[str], env: Mapping[str, str], name: str) -> str:
+    """The value this session was asked for: the caller's, or the environment's.
+
+    ⛔ THE THREE-VALUED RULE, WRITTEN ONCE. `None` means the caller said
+    nothing, so the environment decides; anything else is the caller's word,
+    including `NONE` - the empty string - which is an explicit refusal and
+    beats the environment. Without that distinction a caller cannot turn OFF
+    what the environment turned on, and the one scenario that needs it, checks
+    that must not be linkable to each other, is unreachable.
+
+    It was spelled out in both resolvers below, in two different shapes, with
+    the second one's docstring saying "same three-way rule as the profile" -
+    a claim a reader had to go and verify, and a claim that stops being true
+    the moment one of the two is edited.
+    """
+    return env.get(name, "") if explicit is None else explicit
+
+
 def _resolve_profile(explicit: Optional[str], env: Mapping[str, str]) -> Optional[str]:
     """Which profile directory this session uses, as an absolute path.
 
-    `None` means the caller said nothing, so the environment decides. `NONE`
-    (the empty string) means the caller explicitly asked for no profile, and it
-    beats the environment - that is the whole reason the two are distinguished.
+    Three-valued through `_asked`: nothing said, an explicit refusal, or a
+    value.
 
     ⛔ The path is made ABSOLUTE here. A relative path resolves against the
     SERVER PROCESS's working directory, which the caller cannot see and does not
@@ -109,7 +126,7 @@ def _resolve_profile(explicit: Optional[str], env: Mapping[str, str]) -> Optiona
     gone. Resolving it here at least makes the answer able to say which
     directory was actually used.
     """
-    chosen = env.get("STEALTHFOX_PROFILE_DIR") if explicit is None else explicit
+    chosen = _asked(explicit, env, "STEALTHFOX_PROFILE_DIR")
     if not chosen:
         return None
     if chosen.strip().lower() in _NOT_A_PATH:
@@ -130,15 +147,21 @@ def _resolve_profile(explicit: Optional[str], env: Mapping[str, str]) -> Optiona
 def _resolve_proxy(explicit: Optional[str], env: Mapping[str, str]) -> Optional[dict]:
     """Where the traffic goes out.
 
-    Same three-way rule as the profile, plus `STEALTHFOX_NO_PROXY`, which until
-    now was read by nobody at all while sitting in client configuration files
-    that looked like it worked.
+    The same `_asked` rule as the profile, plus `STEALTHFOX_NO_PROXY`, which
+    until now was read by nobody at all while sitting in client configuration
+    files that looked like it worked.
+
+    ⛔ The veto applies to the ENVIRONMENT's answer only. A caller that passed
+    a proxy asked for that proxy, and a variable set for a different session is
+    not a reason to refuse it; a caller that passed `NONE` is refused already,
+    by `_asked` returning the empty string. So the veto is read only when the
+    caller said nothing, which is what the branch below says out loud instead
+    of leaving it to the order of two returns.
     """
-    if explicit is not None:
-        return proxy_from_url(explicit) if explicit else None
-    if env.get("STEALTHFOX_NO_PROXY", "") not in ("", "0", "false", "False"):
+    if explicit is None and env.get("STEALTHFOX_NO_PROXY", "") not in (
+            "", "0", "false", "False"):
         return None
-    return proxy_from_url(env.get("STEALTHFOX_PROXY"))
+    return proxy_from_url(_asked(explicit, env, "STEALTHFOX_PROXY"))
 
 
 def _describe_exit(proxy: Optional[dict], explicit: Optional[str],
