@@ -282,8 +282,16 @@ async def test_the_frame_comes_back_after_the_window_was_minimised():
         await s.new_page()
         await s.page().goto("data:text/html,<title>aihawk-minimise-probe</title>"
                             "<body style='background:%23fff'>before</body>")
-        hwnd = _window_titled("aihawk-minimise-probe")
-        assert hwnd, "the probe window was not found on screen"
+        # The native window takes its title from the document a moment after
+        # `goto` returns; on a build with the capture heartbeat it was not there
+        # yet on the first look. Waited for, not assumed.
+        hwnd = 0
+        for _ in range(50):
+            hwnd = _window_titled("aihawk-minimise-probe")
+            if hwnd:
+                break
+            await asyncio.sleep(0.1)
+        assert hwnd, "the probe window was not found on screen within 5 s"
         before = await s.watch_frame(timeout=10.0)
 
         assert user32.ShowWindow(hwnd, 6)              # SW_MINIMIZE
