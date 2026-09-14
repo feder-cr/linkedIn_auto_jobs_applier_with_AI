@@ -50,7 +50,14 @@ class FakeLink:
 
     async def call_text(self, name, arguments=None):
         await self.call(name, arguments)
-        return "[]"
+        # ⛔ SHAPED LIKE THE ANSWER IT STANDS IN FOR. `browser_list` answers a
+        # JSON OBJECT, and this said `[]` - a list, which the route reads as
+        # "this is not the answer I asked for". It went unnoticed while an
+        # unreadable answer was smoothed into an empty workspace with a 200;
+        # since 0.55.0 that is a 503 with the reason, so a double that answers
+        # the wrong SHAPE now picks the route's error branch on the test's
+        # behalf, which is the thing a double must never do.
+        return '{"focus": "", "browsers": [], "note": "nothing is open"}'
 
     async def close(self):
         self.closed = True

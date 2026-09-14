@@ -13,7 +13,7 @@ through a model. That is a few seconds and a few thousand tokens per page. A
 plain script does the same page in a fraction of a second for nothing.
 
 The floor under that estimate is measurable and it is ours: our server's 16
-tool definitions are **3,192 tokens resent on every turn** (8,978 characters
+tool definitions are **3,192 tokens resent on every turn** (9,097 characters
 of description plus each tool's argument schema, counted with a tokenizer on
 2026-09-13). Page content and the model's own reasoning stack on top of that
 floor. Multiply by

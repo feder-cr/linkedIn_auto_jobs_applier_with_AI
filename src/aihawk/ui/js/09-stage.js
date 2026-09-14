@@ -1,19 +1,23 @@
 /* ---- the stage: one screen, or two ----
-   Which browsers are on it and in what order: the one being watched first,
-   then the rest as the server lists them. So clicking any screen or any chip
-   brings that browser to the front, and at one-up that means it fills the
-   stage - which is what "click it and go to another screen" means. */
+   The browsers the server lists, in the order it lists them. */
 /* ⛔ NO FILTER ON THE ROWS: EVERY BROWSER THE SERVER LISTS IS ONE THAT IS
    OPEN. There used to be a `running` flag and this filtered on it, from the
    days when a session could hold a browser that was declared and not
    started. Since 0.53.0 there is no such thing, the flag was `true` on every
    row the server could produce, and it went in 0.54.0 - so a filter here
    would be a branch on a case the answer cannot contain. */
+/* ⛔ AND NO REORDERING EITHER, WHICH WENT IN 0.55.0 WITH THE REASON IT WAS
+   WRITTEN FOR. It used to put the watched browser first so that clicking a
+   screen brought it to the front, which meant something while a session held
+   up to eight of them and the stage showed fewer. It cannot now: the stage
+   shows two screens exactly when there are two browsers, so the only thing
+   the sort could still do was decide which of two equal cells sat on the
+   left - and the moment `focus` became a real fact, in this same version,
+   that would have swapped the two panes under the eye of whoever was
+   watching every time the agent moved between them. The watched screen is
+   MARKED, not moved. */
 function onStage(){
-  const w = watched();
-  const live = stage.fleet;
-  const first = live.filter(b => b.id === w);
-  return first.concat(live.filter(b => b.id !== w)).slice(0, stage.grid);
+  return stage.fleet.slice(0, stage.grid);
 }
 
 /* ⛔ A BLOB URL IS NOT GARBAGE-COLLECTED WITH ITS ELEMENT. Every frame is
@@ -119,10 +123,19 @@ function drawStage(){
    places waiting to disagree. */
 const emptyCell = $('stage').firstElementChild.cloneNode(true);
 
+/* ⛔ A POLL THAT FAILED LEAVES THE STAGE ALONE. It used to fall through with
+   an empty fleet, so one unanswered question - the server restarting, a link
+   that dropped - tore down every screen and drew the empty room that says
+   `No browser open`, over browsers that were open the whole time. The next
+   poll three seconds later put them back, which is worse than either state on
+   its own: the workspace blinked out and in for a reason nobody could see.
+   The pictures keep their own age (`ageAll`), so a stage held through a
+   failure says so by itself. */
 async function drawFleet(){
-  let got = {browsers: []};
+  let got;
   try { const r = await door('/live/browsers', {cache:'no-store'});
-        if(r.ok) got = await r.json(); }
+        if(!r.ok) return;
+        got = await r.json(); }
   catch(err){ return; }
   stage.fleet = got.browsers || [];
   stage.focus = got.focus || '';

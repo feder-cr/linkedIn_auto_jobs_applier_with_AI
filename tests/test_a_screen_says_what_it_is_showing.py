@@ -317,3 +317,37 @@ def test_a_screen_is_named_by_its_action_and_described_by_its_state():
         "the veil says the state on screen and nothing points the control at "
         "it, so the state is unheard: %r" % (got,))
 
+
+
+def test_the_dot_marks_the_browser_the_agent_is_actually_working_in():
+    """⛔ THE ONE THING THIS DOT SAYS, AND UNTIL 0.55.0 IT COULD NOT SAY IT.
+    Its title reads `the agent is working here`, and it is drawn on the
+    browser named by `stage.focus`, which the server answered as the literal
+    `main` from the day the focus tools went with the eight-browser session.
+    So with the helper open the dot sat on `main` while the agent typed into
+    `support` - a false sentence on screen, in the one place a person looks to
+    find out where the work is happening.
+
+    The server half is `test_open_first.py`: the focus is the browser the last
+    command acted in. This is the half that draws it, and the two meet in the
+    field name.
+
+    Known-bad, two: drop the dot for the focused screen, and draw it on every
+    screen. Both are caught, because what is asserted is which screen has one
+    AND which does not.
+    """
+    got = cells("""
+      stage.focus = 'support';
+      const out = {};
+      for(const id of ['main', 'support']){
+        const cell = screenFor({id, urls: ['http://x/']}, false);
+        const dot = cell.querySelector('.dot');
+        out[id] = dot ? dot.title : null;
+      }
+      process.stdout.write(JSON.stringify(out));
+    """)
+    assert got["support"] == "the agent is working here", (
+        "the browser the agent is working in carries no mark: %r" % (got,))
+    assert got["main"] is None, (
+        "a browser the agent is not working in is marked as though it were: "
+        "%r" % (got,))

@@ -50,18 +50,21 @@ async def main():
 asyncio.run(main())
 ```
 
-Run against this project's server on 2026-09-13, that prints:
+Run against this project's server on 2026-09-14, that prints:
 
 ```text
-server: stealth 1.28.0
+server: stealth 0.54.0
 tools: 16
     browser_open
     browser_close
     browser_list
-browser_list -> {"focus": "main", "limit": 2, "browsers": [{"id": "main",
-"running": false, "focused": true, "url": "", "urls": []}], "note": "1 of 2
-browsers. Commands that name none go to main."}
+browser_list -> {"focus": "", "browsers": [], "note": "the main browser is
+not open. Call browser_open to open it."}
 ```
+
+That last line is the whole of the open-first rule in one answer: a server
+that has just started holds no browser, so there is nothing to list and
+nobody to be working in. Call `browser_open` and ask again.
 
 Four things are worth naming in those thirty lines.
 

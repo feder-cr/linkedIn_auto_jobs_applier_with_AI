@@ -337,24 +337,96 @@ async def test_the_listing_says_what_is_open_and_the_sentence_when_nothing_is(wo
 
     empty = json.loads(await server.browser_list())
     assert empty["browsers"] == [] and empty["note"] == NOT_OPEN % "main"
-    assert empty["focus"] == "main" and empty["limit"] == 2
+    assert empty["focus"] == "", "nothing is open, so no browser is being worked in"
 
     await server.browser_open(seed=4242)
     await server.browser_navigate("https://example.com/")
     await server.browser_open(browser="support")
-    rows = json.loads(await server.browser_list())["browsers"]
+    answer = json.loads(await server.browser_list())
+    rows = answer["browsers"]
 
     assert [r["id"] for r in rows] == ["main", "support"]
-    assert [r["focused"] for r in rows] == [True, False]
     assert rows[0]["url"] == "https://example.com/" and rows[0]["urls"] == ["https://example.com/"]
     assert rows[1]["urls"] == []
     # ⛔ THE WHOLE ROW, BECAUSE A FIELD NOBODY NEEDS IS A BRANCH SOMEBODY WILL
     # WRITE. `running` sat here until 0.54.0 saying `true` on every row this
     # can produce - only open browsers are listed, and one whose engine has
     # gone is dropped - and the page branched on it in three places, over a
-    # case the answer cannot contain.
-    assert set(rows[0]) == {"id", "focused", "url", "urls"}, (
+    # case the answer cannot contain. `focused` followed it in 0.55.0: it was
+    # `id == focus`, and `focus` is two lines above it in the same answer.
+    assert set(rows[0]) == {"id", "url", "urls"}, (
         "a row carries something other than what a reader needs: %r" % rows[0])
+    # ⛔ AND THE NOTE STILL NAMES `main`, WHICH IS NOT WHERE THE AGENT IS. The
+    # helper was opened last, so the focus is on it; where a command that names
+    # no browser LANDS is a constant of the two roles and did not move. They
+    # were the same string until 0.55.0, which is exactly why one line used to
+    # serve both.
+    assert answer["focus"] == "support"
+    assert "go to main." in answer["note"]
+
+
+async def test_the_focus_is_the_browser_the_last_command_acted_in(work):
+    """⛔ IT WAS THE CONSTANT `main` UNTIL 0.55.0, AND THE INTERFACE DREW IT AS
+    A FACT: a dot on that browser reading `the agent is working here`. With the
+    helper open the dot sat on `main` while the agent typed into `support`.
+
+    Known-bad, and it is the whole change: drop the line in `Work.acting` that
+    records the role. Every assertion below that names `support` then answers
+    `main`.
+    """
+    import json
+
+    async def focus() -> str:
+        return json.loads(await server.browser_list())["focus"]
+
+    await server.browser_open()
+    await server.browser_open(browser="support")
+    assert await focus() == "support", "opening a browser is working in it"
+
+    await server.browser_navigate("https://example.com/", browser="main")
+    assert await focus() == "main", "a command names its browser and the focus follows"
+
+    await server.browser_navigate("https://mail.test/", browser="support")
+    assert await focus() == "support"
+
+    # A command that names nothing goes to `main`, so the focus goes with it.
+    await server.browser_navigate("https://example.com/second")
+    assert await focus() == "main"
+
+    # ⛔ AND A COMMAND THAT FAILED STILL HAPPENED THERE. The focus is recorded
+    # once the browser has answered for itself and BEFORE the action runs,
+    # because the moment a click goes wrong is exactly the moment somebody
+    # watching wants to be looking at the screen it went wrong on.
+    # Known-bad: record after `fn` returns, and this reads `main`.
+    async def refuses(_session):
+        raise ZeroDivisionError("the page refused")
+
+    with pytest.raises(ZeroDivisionError):
+        await work.acting(refuses, role="support")
+    assert await focus() == "support"
+
+
+async def test_the_focus_never_names_a_browser_that_is_not_open(work):
+    """⛔ A FOCUS IS A PLACE TO DRAW A DOT, and a dot on a screen the stage no
+    longer holds is worse than no dot. The helper can be closed, or found gone,
+    after it was the last thing acted in.
+
+    Known-bad: answer `self._acted` without asking whether it is still open.
+    The first assertion then reads `support` over a stage that draws `main`
+    alone.
+    """
+    import json
+
+    async def focus() -> str:
+        return json.loads(await server.browser_list())["focus"]
+
+    await server.browser_open()
+    await server.browser_open(browser="support")
+    await server.browser_close(browser="support")
+    assert await focus() == "main"
+
+    await server.browser_close()
+    assert await focus() == "", "nothing is open, so nobody is being worked in"
 
 
 async def test_status_reports_the_person_and_the_page_or_the_sentence(work):

@@ -279,14 +279,22 @@ function severalOpen(n){
    site opens a second page, and answering the FOCUSED row ignores a pinned
    pane, so the bar names a browser nobody is looking at.
 
+   ⛔ IT ASKS FOR ONE BROWSER BY NAME AND HAS NO OTHER WAY IN. It used to fall
+   back on a `focused` flag carried by every row, which was the row's id
+   compared against the `focus` beside it - the same fact twice on one wire,
+   and the flag went in 0.55.0. Who is being watched is `pinned || focus` and
+   that is decided one line up, in the caller; with nobody to watch there is
+   no address, which is what an empty answer says.
+
    ⛔ AND IT USED TO BE A ROUTE. `/live/address` asked `browser_list` a second
    time on a second timer for a field these rows already carry - a round trip
    every two seconds for something in memory here, and an answer that went
    stale the moment somebody pinned a pane, because the browser being watched
    is a fact of this page and not of the server. */
 function addressOf(rows, who){
+  if(!who) return '';
   const list = Array.isArray(rows) ? rows : [];
-  const row = list.find(b => b && (who ? b.id === who : b.focused));
+  const row = list.find(b => b && b.id === who);
   return (row && row.url) || '';
 }
 
