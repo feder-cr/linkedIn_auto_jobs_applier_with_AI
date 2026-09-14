@@ -21,7 +21,15 @@
    with the page dead, for the second time in two days and by a different
    mechanism than the first. Computed when called, the order of the lines stops
    being something anybody has to keep right. */
-const qkey = () => 'aihawk.queued.' + here;
+const qkey = (who) => 'aihawk.queued.' + (who || here);
+/* ⛔ AND IT GOES WHEN THE CONVERSATION GOES. Deleting a conversation erased
+   its transcript on the server and its browsers with it, and left the sentence
+   somebody had typed into it sitting in this browser's storage - one key per
+   conversation that ever had one, kept for as long as the browser does, for
+   something nobody can ever reach again. */
+function dropQueued(who){
+  try { localStorage.removeItem(qkey(who)); } catch(err){}
+}
 function setQueued(text){
   queued = text || null;
   try {

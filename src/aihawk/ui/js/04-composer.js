@@ -135,7 +135,11 @@ function wipe(){
      otherwise left the composer saying "queue for next turn" forever. */
   busyNow = false;
   seen();
-  setQueued(null);
+  /* ⛔ AND NOT THE QUEUE. Wiping is what the page does for BOTH reasons a
+     `fresh` arrives, and only one of them - somebody pressing Clear - is a
+     reason to throw away a sentence they typed. The dispatcher drops it for
+     that one; a reconnection leaves it where it is, which is what the page
+     already does for a queue it finds at load. */
   /* And the page can introduce itself again. Clear emptied the pane to
      nothing at all, on a product whose whole first-run explanation was
      those three sentences: press it on a finished conversation and it
@@ -196,6 +200,20 @@ function outOfDate(path){
   orphan('err', 'This page is older than the server: it asked for '
          + String(path).split('?')[0] + ', which this version does not serve. '
          + 'Reload to get the current page.');
+}
+
+/* ⛔ A PAGE OLDER THAN THE SERVER USED TO BE NOTICED ONLY BY A 404, which
+   means only when a route it asks for had gone away entirely - and most
+   versions do not remove a route. So a tab left open across an upgrade went
+   on running the script it was served, against a server that had moved, in
+   silence. The build now rides on the fleet poll; this is what the page does
+   the first time it changes. One sentence, through the same latch as the
+   route that vanished, because a page is old once however it found out. */
+function newerServer(was, now){
+  if(outdated) return;
+  outdated = true;
+  orphan('err', 'This page was served by an earlier version (' + was + ') and '
+         + 'the server is now ' + now + '. Reload to get the current page.');
 }
 
 /* ⛔ ONE OWNER FOR `inert` WHEREVER TWO REASONS CAN HOLD THE SAME BOX. The

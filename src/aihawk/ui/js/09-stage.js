@@ -139,6 +139,10 @@ async function drawFleet(){
   catch(err){ return; }
   stage.fleet = got.browsers || [];
   stage.focus = got.focus || '';
+  /* The build the server is running, kept the first time and compared every
+     time after. See `newerServer`. */
+  if(got.build){ if(!build) build = got.build;
+                 else if(build !== got.build) newerServer(build, got.build); }
   /* ⛔ THE LAYOUT IS NOT CHOSEN ANY MORE, IT FOLLOWS THE BROWSERS. There was a
      picker - one, two or four screens - because a session could hold eight and
      which ones to watch was a decision. A session holds `main` and, while it is

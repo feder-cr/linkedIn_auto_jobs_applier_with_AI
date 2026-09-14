@@ -19,6 +19,7 @@ from starlette.routing import Route
 
 from .chat import ChatService, DEFAULT_CHAT_ID
 from .link import image_of, text_of
+from . import __version__
 from .mcp import DEFAULT_BROWSER_ID, NOT_OPEN
 from .sessions import SessionGone, Sessions
 from .ui import PAGE
@@ -227,7 +228,19 @@ async def events(request: Request) -> StreamingResponse:
             if not same_conversation and marker:
                 # It reconnected carrying a position from another transcript,
                 # so what it is still showing is not this one.
-                yield sse({"kind": "fresh", "text": "1"})
+                #
+                # ⛔ AND IT SAYS WHICH OF THE TWO THINGS THIS IS. `fresh` is
+                # also what `/chat/fresh` emits when somebody presses Clear,
+                # and the page answered both by wiping - which drops the
+                # message they had typed and queued. Clearing a conversation
+                # deliberately is one thing; reconnecting to a process that
+                # restarted is another, and only one of them is a reason to
+                # throw away somebody's sentence. The reason travels in the
+                # text rather than in a new kind, the way `busy` already
+                # carries "1" and "0": a page older than this server keeps
+                # doing exactly what it did before instead of drawing a word
+                # it has never heard of into the transcript.
+                yield sse({"kind": "fresh", "text": "rewound"})
             # Flagged as replay so the page does not animate forty rows at once
             # and does not start a stopwatch on work that finished before this
             # listener existed. Numbered so the next reconnection can say where
@@ -373,8 +386,17 @@ async def browsers(request: Request) -> JSONResponse:
         # sentence; neither is an empty workspace.
         return JSONResponse({"error": said[:200] or "the workspace could not be read"},
                             status_code=503)
+    # ⛔ AND THE BUILD RIDES ALONG, on the one question every page asks every
+    # three seconds. A page left open across an upgrade goes on running the
+    # script it was served, against a server that has moved: nothing says so
+    # unless a route it asks for has gone away entirely, which most versions do
+    # not do. The page keeps the first build it is told and says something the
+    # moment that changes. It travels as a FIELD rather than as an event
+    # because an older page ignores a field it does not know and would have
+    # drawn an unknown event into the transcript as a sentence.
     return JSONResponse({"browsers": got.get("browsers") or [],
-                         "focus": got.get("focus") or ""})
+                         "focus": got.get("focus") or "",
+                         "build": __version__})
 
 
 # ⛔ `/live/address` STOOD HERE, AND THIS BRANCH IS WHAT MADE IT A DUPLICATE.
