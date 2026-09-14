@@ -77,7 +77,15 @@ const onEvent = (e) => {
     case 'model': $('model').textContent = m.text; $('model').hidden = false; break;
     /* Sent to every listener, so a second tab clears too instead of showing a
        transcript the server has already forgotten. */
-    case 'fresh': wipe(); break;
+    /* ⛔ ONE WORD, TWO REASONS, AND ONLY ONE OF THEM IS A REASON TO
+       THROW AWAY A TYPED SENTENCE. `fresh` arrives when somebody pressed
+       Clear, and it arrives when this page reconnected holding a position
+       from another transcript - a server that restarted under it. The page
+       answered both by wiping, and wiping dropped the queued message: so a
+       follow-up typed while the agent worked disappeared on the next
+       restart, which is the one thing this interface says everywhere it
+       must not do. The server says which now. */
+    case 'fresh': wipe(); if(m.text !== 'rewound') setQueued(null); break;
     case 'busy':
       busyNow = m.text === '1';
       /* Not on a replay: those events describe a wait that is over. */

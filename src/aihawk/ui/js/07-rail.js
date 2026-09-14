@@ -124,6 +124,7 @@ async function forgetChat(id, name){
             + 'Stop its run first, then delete it.');
     return;
   }
+  dropQueued(id);
   if(isHere(id)){ location.search = ''; return; }
   drawChats();
 }

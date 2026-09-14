@@ -124,7 +124,11 @@ async def test_the_workspace_is_answered_by_the_server_and_not_by_the_interface(
     got = await asyncio.wait_for(client.get("/live/browsers"), 20)
     assert got.status_code == 200, got.text[:300]
     body = got.json()
-    assert set(body) == {"browsers", "focus"}, body
+    assert set(body) == {"browsers", "focus", "build"}, body
+    from aihawk import __version__
+    assert body["build"] == __version__, (
+        "the build the page is told is not the one this server is running, so "
+        "a tab left open across an upgrade cannot notice: %s" % body)
     assert body["browsers"] == [], (
         "nothing was opened, so nothing should be listed: %s" % body)
     assert body["focus"] == "", (

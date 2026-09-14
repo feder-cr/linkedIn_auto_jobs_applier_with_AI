@@ -194,7 +194,7 @@ async def test_a_position_from_another_transcript_starts_over_and_says_so():
         await wire.until(SETTLED)
 
         events = wire.events()
-        assert events[1] == b'data: {"kind": "fresh", "text": "1"}', (
+        assert events[1] == b'data: {"kind": "fresh", "text": "rewound"}', (
             "the page was not told to drop the transcript it is showing: %r"
             % events[1])
         replayed = [e for e in events if e.startswith(b"id: ")]
@@ -219,7 +219,7 @@ async def test_a_marker_that_is_not_a_position_is_not_a_resume_either():
         await wire.until(SETTLED)
 
         events = wire.events()
-        assert events[1] == b'data: {"kind": "fresh", "text": "1"}', (
+        assert events[1] == b'data: {"kind": "fresh", "text": "rewound"}', (
             "a marker this format cannot read was taken for a position in this "
             "transcript: %r" % events[1])
 
@@ -273,6 +273,10 @@ async def test_a_live_event_is_numbered_and_live_state_is_not():
         assert live[1] == b'data: {"kind": "busy", "text": "0"}', (
             "live state came with an id, which moves the resume point past a "
             "real event: %r" % live[1])
+        # ⛔ AND THIS ONE STILL SAYS "1": it is somebody pressing Clear, which
+        # is the other reason a `fresh` arrives and the only one that is a
+        # reason to throw away a typed sentence. The reconnection that finds a
+        # position from another transcript says "rewound".
         assert live[2] == b'data: {"kind": "fresh", "text": "1"}', (
             "a reset came with an id: %r" % live[2])
 

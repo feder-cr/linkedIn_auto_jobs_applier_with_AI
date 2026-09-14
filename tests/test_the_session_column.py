@@ -574,9 +574,16 @@ async def test_a_queued_message_is_not_lost_when_the_page_goes_away():
         "a reload loses it")
     assert "localStorage.getItem(qkey())" in code, (
         "nothing reads the queued message back, so saving it changes nothing")
-    assert "'aihawk.queued.' + here" in code, (
+    assert "'aihawk.queued.' + (who || here)" in code, (
         "the queue is not kept per conversation, so switching sessions carries "
         "somebody's pending sentence into another chat")
+    # ⛔ AND IT DIES WITH THE CONVERSATION IT BELONGS TO. Deleting one erased
+    # its transcript on the server and its browsers with it, and left the
+    # sentence somebody had typed into it sitting in this browser's storage -
+    # one key per conversation that ever had one, kept for as long as the
+    # browser is, for something nobody can ever reach again.
+    assert "function dropQueued(" in code and "dropQueued(id);" in code, (
+        "deleting a conversation leaves its queued message in this browser")
 
     # One writer. The declaration is the only other place the name may be
     # assigned, and it is on the `let` line.
