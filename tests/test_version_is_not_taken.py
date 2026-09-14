@@ -58,9 +58,17 @@ import pytest
 
 PACKAGE = "aihawk"
 
-#: The tag that published the release BEFORE the current line of work. From it
-#: to here the package moved by definition, which makes it the live known-bad
-#: for the diff half: a check that has only ever said "unmoved" is not a check.
+#: A tag far enough back that the package has certainly moved since, which
+#: makes it the live known-bad for the diff half: a check that has only ever
+#: said "unmoved" is not a check.
+#:
+#: ⛔ IT SAID "THE RELEASE BEFORE THE CURRENT LINE OF WORK" AND HAD NOT BEEN
+#: TRUE FOR FIFTY VERSIONS. The assertion it backs was never wrong - the
+#: package has certainly moved since 0.5.0 - but the sentence beside it
+#: described a constant somebody would have to update every release, and
+#: nobody did, so a reader reconciling the two would conclude the file had
+#: been abandoned. What this value has to be is OLD and PRESENT in the clone;
+#: naming it that way is what stops it from going stale again.
 PREVIOUS_RELEASE_TAG = "v0.5.0"
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
