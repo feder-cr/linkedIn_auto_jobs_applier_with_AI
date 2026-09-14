@@ -62,14 +62,20 @@ def save(session_id: str, browsers: Dict[str, dict],
          focus: Optional[str] = None) -> Path:
     """Write one session down. Returns where it went.
 
-    ⛔ `write_bytes`, never `write_text`. On Windows the text form translates
-    every newline on the way out, which in this project has already turned a
-    twenty-line change into a fifteen-thousand-line one. JSON does not care, but
-    the habit is what keeps the next file that does care safe.
+    How it reaches the disk - bytes rather than text, and a temporary
+    neighbour moved into place so a process that dies mid-write leaves the
+    previous session intact - is in `storage.write_atomically`, which is where
+    that decision lives for both halves of a session. It is not repeated here:
+    written twice it would be two accounts of one rule, free to disagree.
 
-    Written to a temporary neighbour and moved into place, so a process that
-    dies mid-write leaves the previous session intact rather than half of a new
-    one. A session file that will not parse is worse than an old one.
+    ⛔ AND IT WAS REPEATED HERE, which is worth saying rather than quietly
+    deleting. This docstring carried the bytes-not-text rule in full while the
+    function DELEGATES it - so the rule was written where it is not applied,
+    and a reader fixing it here would have changed nothing. `load` below had
+    it right about the same file, five lines down, and the module that owns
+    the rule opens by saying that two copies is the arrangement where a fix
+    reaches one of them. Found 2026-09-15 by a scan for prose repeated across
+    modules, not by reading.
     """
     where = path_of(session_id)
     payload = {
