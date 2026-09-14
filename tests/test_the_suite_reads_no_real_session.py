@@ -64,17 +64,16 @@ def test_the_server_starts_each_test_holding_nothing():
 
     Known-bad: drop the second autouse fixture from `conftest.py`. This stays
     green on its own - the poison needs another test to run first - so it is
-    written as the contract rather than as a reproduction: these four are empty
-    - or, for `_restored`, false - when a test begins, and any test may rely on
-    that.
+    written as the contract rather than as a reproduction: the server's one
+    `Work` holds nothing and has restored nothing when a test begins, and any
+    test may rely on that.
     """
     from aihawk.mcp import server
 
-    for held in ("_seen_tabs", "_tabs_owed"):
-        assert not getattr(server, held), (
-            "server.%s arrived at this test with %r in it" % (held, getattr(server, held)))
-    assert server._restored is False, (
-        "server._restored arrived at this test already true")
+    assert server.work.restored is False, (
+        "server.work arrived at this test already restored")
+    assert server.work.registry.declared() == [], (
+        "server.work arrived at this test holding %r" % server.work.registry.declared())
 
 
 def test_the_conftest_imports_nothing_the_light_jobs_do_not_have():

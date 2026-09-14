@@ -20,6 +20,8 @@ import json
 import pytest
 
 from aihawk.mcp import actions, server, store
+from aihawk.mcp.work import Work
+from invisible_playwright.async_api import TargetClosedError
 
 
 class _Recording:
@@ -56,12 +58,10 @@ class _Recording:
 
 @pytest.fixture
 def registry(monkeypatch):
-    reg = server.new_registry(factory=_Recording,
+    w = Work("default", factory=_Recording,
                               defaults=lambda: {"seed": 7, "headless": True})
-    monkeypatch.setattr(server, "registry", reg)
-    monkeypatch.setattr(server, "_restored", False)
-    monkeypatch.setattr(server, "_seen_tabs", {})
-    monkeypatch.setattr(server, "_tabs_owed", {})
+    monkeypatch.setattr(server, "work", w)
+    reg = w.registry
 
     async def _went(session, url, wait_until="domcontentloaded"):
         session.pages[-1] = url
@@ -77,7 +77,7 @@ async def test_where_a_browser_was_is_written_down_with_who_it_was(registry):
     nobody notices is missing until they look for their work.
     """
     await server.browser_open(seed=4242)
-    session = await server.ready()
+    session = await server.work.ready()
     await session.new_page()
     await actions.navigate(session, "http://example.test/one")
     # Any command aimed at it notes where it is; this is the one the interface
@@ -129,10 +129,10 @@ async def test_waking_a_declared_browser_reopens_the_page_it_was_on(registry, mo
                                     "urls": ["http://a.test/", "http://b.test/"]}},
                focus="main")
 
-    assert server.browsers_in() == ["main"]
+    assert server.work.roles() == ["main"]
     assert registry.ids() == [], "reading a session back started a browser"
 
-    session = await server.ready()
+    session = await server.work.ready()
 
     assert session.pages == ["http://b.test/"], (
         "a wake opened more than the page the browser was on, which is a state "
@@ -158,7 +158,7 @@ async def test_the_status_does_not_blame_the_site_for_pages_the_wake_opened(regi
     store.save("default", {"main": {"seed": 7, "headless": True,
                                     "urls": ["http://a.test/", "http://b.test/"]}})
 
-    await server.ready()
+    await server.work.ready()
     answer = await server.browser_status()
 
     assert "http://b.test/" in answer, "the status does not say where it is: %r" % answer
@@ -178,9 +178,9 @@ async def test_the_tabs_are_reopened_once_and_not_on_every_command(registry):
     store.save("default", {"main": {"seed": 1, "headless": True,
                                     "urls": ["http://a.test/"]}})
 
-    first = await server.ready()
-    await server.ready()
-    await server.ready()
+    first = await server.work.ready()
+    await server.work.ready()
+    await server.work.ready()
 
     assert first.pages == ["http://a.test/"], first.pages
 
@@ -198,7 +198,7 @@ async def test_a_url_that_will_not_load_does_not_cost_the_browser(registry, monk
     store.save("default", {"main": {"seed": 1, "headless": True,
                                     "urls": ["http://gone.test/"]}})
 
-    session = await server.ready()
+    session = await server.work.ready()
 
     assert session is not None
     assert session.kwargs.get("seed") == 1
@@ -208,7 +208,7 @@ async def test_a_browser_that_was_never_saved_is_woken_empty(registry):
     """Known-bad: default the owed tabs to something. A brand new browser then
     opens a page nobody asked for.
     """
-    session = await server.ready()
+    session = await server.work.ready()
     assert session.pages == []
 
 
@@ -232,11 +232,12 @@ async def test_the_retry_path_wakes_the_same_way(registry):
     async def _once(session, *a, **k):
         if "first" not in seen:
             seen["first"] = True
-            raise RuntimeError("Target page, context or browser has been closed")
+            raise TargetClosedError("Target page, context or browser has been closed")
         return json.dumps([p["url"] for p in await session.describe_pages()])
 
-    got = await server._retrying(_once)
+    got, rebuilt = await server.work.retrying(_once)
 
+    assert rebuilt, "the browser was rebuilt and the action did not say so"
     assert json.loads(got) == ["http://a.test/"], got
 
 

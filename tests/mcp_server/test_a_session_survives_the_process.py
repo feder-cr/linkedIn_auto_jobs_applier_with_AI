@@ -26,6 +26,7 @@ from __future__ import annotations
 import pytest
 
 from aihawk.mcp import actions, server, store
+from aihawk.mcp.work import WHO_A_BROWSER_IS, Work
 
 
 class _Recording:
@@ -47,14 +48,13 @@ class _Recording:
         return []
 
 
-def _fresh(monkeypatch, **kwargs):
-    """A server with no memory of what it held, as after a restart."""
-    reg = server.new_registry(
-        factory=_Recording,
-        defaults=lambda: dict({"seed": 7, "headless": True}, **kwargs))
-    monkeypatch.setattr(server, "registry", reg)
-    monkeypatch.setattr(server, "_restored", False)
-    return reg
+def _fresh(monkeypatch, session_id="default", **kwargs):
+    """A server with no memory of what it held, as after a restart - serving
+    the piece of work it is told to, `default` unless a test says otherwise."""
+    w = Work(session_id, factory=_Recording,
+             defaults=lambda: dict({"seed": 7, "headless": True}, **kwargs))
+    monkeypatch.setattr(server, "work", w)
+    return w.registry
 
 
 @pytest.fixture
@@ -98,7 +98,7 @@ async def test_the_session_nobody_opened_a_browser_in_is_written_down_too(regist
     The identity is real and worth saving - a lazily started browser draws a
     concrete seed, so coming back to it is coming back to that person.
 
-    Known-bad: drop the `on_change` line from `server.new_registry`. Every other
+    Known-bad: drop the `on_change` wiring from `Work.__init__`. Every other
     test in this file still passes, because they all go through a tool that
     remembers by hand.
     """
@@ -152,7 +152,7 @@ async def test_the_saved_fields_are_the_launch_kwargs_and_not_a_second_vocabular
 
     produced = set(plan.plan_session(seed=1, proxy="socks5://127.0.0.1:1",
                                      profile=str(tmp_path / "prof")).kwargs)
-    invented = sorted(set(server.WHO_A_BROWSER_IS) - produced)
+    invented = sorted(set(WHO_A_BROWSER_IS) - produced)
     assert not invented, (
         "these are saved but no launch kwarg is called that, so they filter "
         "nothing: %r. The launch names are %r" % (invented, sorted(produced)))
@@ -164,13 +164,13 @@ async def test_the_saved_fields_are_the_launch_kwargs_and_not_a_second_vocabular
     #: a second list would drift from it.
     THIS_LAUNCH = set(plan.launched_here({"STEALTHFOX_BINARY": "C:/an/engine"}))
     assert THIS_LAUNCH == {"binary_path", "headless"}, THIS_LAUNCH
-    unclassified = sorted(produced - set(server.WHO_A_BROWSER_IS) - THIS_LAUNCH)
+    unclassified = sorted(produced - set(WHO_A_BROWSER_IS) - THIS_LAUNCH)
     assert not unclassified, (
         "the planner produces settings this file has never decided about: %r. "
         "Either they say who a browser is, and belong in WHO_A_BROWSER_IS, or "
         "they describe this launch, and belong in plan.launched_here with a "
         "reason." % unclassified)
-    assert not set(server.WHO_A_BROWSER_IS) & THIS_LAUNCH, (
+    assert not set(WHO_A_BROWSER_IS) & THIS_LAUNCH, (
         "a launch setting is written into the identity file, so one launch "
         "decides for every later one that reads it")
 
@@ -193,7 +193,7 @@ async def test_whether_the_window_is_shown_is_this_launch_to_decide_not_the_file
     monkeypatch.delenv("STEALTHFOX_HEADLESS", raising=False)
     store.save("default", {"main": {"seed": 4242, "headless": False}})
 
-    session = await server.ready()
+    session = await server.work.ready()
 
     assert session.kwargs.get("seed") == 4242, "it came back as somebody else"
     assert session.kwargs.get("headless") is True, (
@@ -208,7 +208,7 @@ async def test_and_a_headed_launch_shows_a_browser_the_file_saved_hidden(
     monkeypatch.setenv("STEALTHFOX_HEADLESS", "0")
     store.save("default", {"main": {"seed": 4242, "headless": True}})
 
-    session = await server.ready()
+    session = await server.work.ready()
 
     assert session.kwargs.get("headless") is False, session.kwargs
 
@@ -269,9 +269,9 @@ async def test_reopening_gives_the_browsers_back_without_starting_one(registry,
     # The identity comes back; the helper does not, and that is the promise
     # rather than a gap - a helper that survived a restart would be a second
     # identity the session carries.
-    assert server.browsers_in() == ["main"], (
+    assert server.work.roles() == ["main"], (
         "the session came back without its browser, or came back with the "
-        "helper too: %r" % server.browsers_in())
+        "helper too: %r" % server.work.roles())
     assert reg.ids() == [], (
         "reopening a session STARTED its browsers: %r" % reg.ids())
 
@@ -286,7 +286,7 @@ async def test_a_reopened_browser_comes_back_as_the_person_it_was(registry, rest
     await server.browser_open(seed=4242)
 
     reg = restarted(seed=1234)  # the environment would give a different person
-    session = await reg.ensure(server.addressed())
+    session = await reg.ensure(server.work.key())
 
     assert session.kwargs["seed"] == 4242, (
         "the reopened browser was built from the environment instead of from "
@@ -322,41 +322,39 @@ async def test_a_session_saved_under_other_names_comes_back_as_main(registry,
                focus="b-tech")
 
     reg = restarted()
-    assert server.browsers_in() == ["main"], (
+    assert server.work.roles() == ["main"], (
         "a session saved before the change came back holding %r"
-        % server.browsers_in())
-    assert server.addressed() == "default/main"
+        % server.work.roles())
+    assert server.work.key() == "default/main"
     assert (reg.config("default/main") or {}).get("seed") == 2, (
         "it came back under the right name and as the wrong person: %r"
         % reg.config("default/main"))
 
 
-async def test_which_file_this_process_persists_to_comes_from_the_environment(
-        registry, restarted, monkeypatch):
+async def test_which_file_this_process_persists_to_is_the_one_its_work_was_given(
+        registry, restarted):
     """⛔ THIS IS THE ONLY PLACE "WHICH SESSION" STILL EXISTS, AND IT IS NOT A
     TOOL ARGUMENT. No tool here takes a session id, lists saved sessions, or
     deletes one - a model working through this server cannot enumerate or
-    reach a second piece of work, by design. What used to be `session_id` on
-    every call is now `_SESSION_ID`, read from `AIHAWK_SESSION_ID` once, at
-    import, by whoever SPAWNS the process - the interface, spawning one server
-    per conversation, or nobody at all for a standalone client, which lands on
+    reach a second piece of work, by design. The id is what the process's one
+    `Work` was CONSTRUCTED with, from `AIHAWK_SESSION_ID`, read once by
+    whoever SPAWNS the process - the interface, spawning one server per
+    conversation, or nobody at all for a standalone client, which lands on
     `default` exactly as every caller did before this had a name.
 
-    Monkeypatching the read value stands in for a second process reading a
-    second one: the module-level read happens once, at import, so within one
-    test process the only way to exercise a different value is to set it
-    directly - which is the same effect a real second process gets from a
-    real second environment variable. `tests/mcp_server/test_stdio_e2e.py`
-    proves the environment variable itself works, with two real subprocesses.
+    Two `Work`s stand in for two processes: each is built with its own id,
+    which is the same effect a real second process gets from a real second
+    environment variable. `tests/mcp_server/test_stdio_e2e.py` proves the
+    variable itself works, with two real subprocesses.
 
-    Known-bad: key the store by anything but `_SESSION_ID` - a single file,
-    say. The second `browser_open` then overwrites the first one's file and
-    only one of the two survives.
+    Known-bad: key the store by anything but the id the object was given - a
+    single file, say. The second `browser_open` then overwrites the first
+    one's file and only one of the two survives.
     """
-    monkeypatch.setattr(server, "_SESSION_ID", "work")
+    restarted(session_id="work")
     await server.browser_open(seed=1)
 
-    monkeypatch.setattr(server, "_SESSION_ID", "home")
+    restarted(session_id="home")
     await server.browser_open(seed=2)
 
     saved_work = store.load("work")
@@ -367,9 +365,8 @@ async def test_which_file_this_process_persists_to_comes_from_the_environment(
     assert saved_home["browsers"]["main"]["seed"] == 2
 
     # And a restart reads back whichever one this process is told it is.
-    reg = restarted()
-    monkeypatch.setattr(server, "_SESSION_ID", "work")
-    assert server.browsers_in() == ["main"]
+    reg = restarted(session_id="work")
+    assert server.work.roles() == ["main"]
     assert reg.config("work/main")["seed"] == 1, (
         "restoring \"work\" came back as somebody else: %r"
         % reg.config("work/main"))
@@ -401,10 +398,10 @@ async def test_a_session_is_read_from_disk_once_and_not_on_every_command(registr
     monkeypatch.setattr(store, "load",
                         lambda sid: (reads.append(sid), real_load(sid))[1])
 
-    assert server.browsers_in() == ["main"]
+    assert server.work.roles() == ["main"]
     for _ in range(5):
-        server.browsers_in()
-        server.addressed()
+        server.work.roles()
+        server.work.key()
     assert len(reads) == 1, (
         "the saved session was read from disk %d times; `restore` runs from "
         "`in_session`, so that is once per command" % len(reads))
@@ -416,7 +413,7 @@ async def test_a_session_is_read_from_disk_once_and_not_on_every_command(registr
     await server.browser_close()
     store.save("default", {"main": {"seed": 1}})
 
-    assert server.browsers_in() == [], (
+    assert server.work.roles() == [], (
         "a browser this server closed came back because the file was read again")
 
 
@@ -452,7 +449,7 @@ async def test_a_browser_that_died_underneath_is_still_a_browser_of_the_session(
     """
     await server.browser_open(seed=4242)
 
-    await registry.drop(server.addressed())
+    await registry.drop(server.work.key())
 
     assert store.load("default")["browsers"]["main"]["seed"] == 4242
 
@@ -473,7 +470,7 @@ async def test_a_write_that_fails_does_not_cost_the_caller_the_browser(registry,
     said = await server.browser_open(seed=4242)
 
     assert "could not start" not in said, said
-    assert server.browsers_in() == ["main"]
+    assert server.work.roles() == ["main"]
 
 
 # --- closing the last browser on purpose ------------------------------------
@@ -545,7 +542,7 @@ async def test_a_restored_browser_runs_on_the_engine_this_build_was_given(
     monkeypatch.setenv("STEALTHFOX_BINARY", "C:/an/engine/firefox.exe")
     store.save("default", {"main": {"seed": 4242, "headless": True}})
 
-    session = await server.ready()
+    session = await server.work.ready()
 
     assert session.kwargs.get("seed") == 4242, "it came back as somebody else"
     assert session.kwargs.get("binary_path") == "C:/an/engine/firefox.exe", (

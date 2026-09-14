@@ -36,15 +36,15 @@ async def test_a_client_leaving_does_not_close_its_browser():
     from aihawk.mcp import server
 
     fake = _FakeSession()
-    server.registry._browsers[KEY] = fake
+    server.work.registry._browsers[KEY] = fake
 
     async with server._lifespan(server.mcp) as ctx:
         assert ctx == {}
 
     assert fake.closed is False, "the lifespan closed a session; a second client would find no browser"
-    assert server.registry.peek(KEY) is fake
+    assert server.work.registry.peek(KEY) is fake
 
-    await server.registry.close_all()
+    await server.work.registry.close_all()
 
 
 @pytest.mark.asyncio
@@ -52,17 +52,17 @@ async def test_several_clients_coming_and_going_leave_every_session_alone():
     from aihawk.mcp import server
 
     a, b = _FakeSession(), _FakeSession()
-    server.registry._browsers["chat"] = a
-    server.registry._browsers["someone-else"] = b
+    server.work.registry._browsers["chat"] = a
+    server.work.registry._browsers["someone-else"] = b
 
     for _ in range(3):
         async with server._lifespan(server.mcp):
             pass
 
     assert a.closed is False and b.closed is False
-    assert server.registry.ids() == ["chat", "someone-else"]
+    assert server.work.registry.ids() == ["chat", "someone-else"]
 
-    await server.registry.close_all()
+    await server.work.registry.close_all()
 
 
 @pytest.mark.asyncio
@@ -73,12 +73,12 @@ async def test_close_all_is_what_actually_shuts_them_down():
     from aihawk.mcp import server
 
     fake = _FakeSession()
-    server.registry._browsers[KEY] = fake
+    server.work.registry._browsers[KEY] = fake
 
-    await server.registry.close_all()
+    await server.work.registry.close_all()
 
     assert fake.closed is True
-    assert server.registry.ids() == []
+    assert server.work.registry.ids() == []
 
 
 def test_the_exit_hook_is_registered():

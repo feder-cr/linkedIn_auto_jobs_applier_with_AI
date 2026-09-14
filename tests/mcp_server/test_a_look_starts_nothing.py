@@ -25,6 +25,7 @@ import json
 import pytest
 
 from aihawk.mcp import NOTHING_RUNNING, server
+from aihawk.mcp.work import Work
 from aihawk.mcp.store import DEFAULT_SESSION_ID
 
 pytestmark = pytest.mark.asyncio
@@ -52,9 +53,10 @@ class _Recording:
 
 @pytest.fixture
 def registry(monkeypatch):
-    reg = server.new_registry(factory=_Recording,
+    w = Work("default", factory=_Recording,
                               defaults=lambda: {"seed": 7, "headless": True})
-    monkeypatch.setattr(server, "registry", reg)
+    monkeypatch.setattr(server, "work", w)
+    reg = w.registry
     return reg
 
 
@@ -69,7 +71,7 @@ async def test_looking_at_a_declared_browser_does_not_wake_it(registry):
     tab tool said until 0.39.0, or any future `browser_list` that resolves
     through `ready`. Either turns this look into 800 MB and seven seconds.
     """
-    registry.declare(server.addressed(), {"seed": 7, "headless": True})
+    registry.declare(server.work.key(), {"seed": 7, "headless": True})
     assert registry.ids() == [], "declaring a browser started one"
 
     said = json.loads(await server.browser_list())

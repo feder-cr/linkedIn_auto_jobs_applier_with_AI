@@ -123,11 +123,15 @@ def test_a_tool_that_can_start_a_browser_is_not_marked_read_only():
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             for inner in ast.walk(node):
+                # `work.ready(...)` since the lifecycle became one object, and
+                # `work.retrying(...)` wakes through it too.
                 if (isinstance(inner, ast.Call)
-                        and isinstance(inner.func, ast.Name)
-                        and inner.func.id == "ready"):
+                        and isinstance(inner.func, ast.Attribute)
+                        and isinstance(inner.func.value, ast.Name)
+                        and inner.func.value.id == "work"
+                        and inner.func.attr in ("ready", "retrying")):
                     starts.add(node.name)
-    assert starts, "no tool was found calling ready(), so this is not reading the server"
+    assert starts, "no tool was found calling work.ready(), so this is not reading the server"
     by_name = {t.name: t.annotations for t in _live_tools()}
     wrong = sorted(n for n in starts
                    if n in by_name and by_name[n].readOnlyHint is True)

@@ -16,13 +16,15 @@ object the action ran on.
 
 Known-bad, run before this file was trusted: `except Exception:` with no
 question asked, as it was - the first two tests go red. And `is_dead` reading
-only the text, without `_is_usable` - the last one goes red.
+only the type, without `_is_usable` - the last one goes red.
 """
 from __future__ import annotations
 
 import pytest
 
 from aihawk.mcp import server
+from aihawk.mcp.work import Work
+from invisible_playwright.async_api import TargetClosedError
 
 
 class _Session:
@@ -44,12 +46,10 @@ class _Session:
 
 @pytest.fixture
 def registry(monkeypatch):
-    reg = server.new_registry(factory=_Session,
+    w = Work("default", factory=_Session,
                               defaults=lambda: {"seed": 7, "headless": True})
-    monkeypatch.setattr(server, "registry", reg)
-    monkeypatch.setattr(server, "_restored", False)
-    monkeypatch.setattr(server, "_seen_tabs", {})
-    monkeypatch.setattr(server, "_tabs_owed", {})
+    monkeypatch.setattr(server, "work", w)
+    reg = w.registry
     return reg
 
 
@@ -57,12 +57,12 @@ async def test_a_page_that_refuses_does_not_cost_the_browser(registry):
     async def refuses(session):
         raise RuntimeError("Page.goto: NS_ERROR_UNKNOWN_HOST")
 
-    before = await server.ready()
+    before = await server.work.ready()
     with pytest.raises(RuntimeError, match="UNKNOWN_HOST"):
-        await server._retrying(refuses)
+        await server.work.retrying(refuses)
 
     assert not before.closed, "a healthy browser was closed over a page's refusal"
-    assert registry.peek(server.addressed()) is before, (
+    assert registry.peek(server.work.key()) is before, (
         "the browser was replaced over a page's refusal")
 
 
@@ -75,29 +75,31 @@ async def test_a_refusal_is_reported_once_not_tried_twice(registry):
         calls.append(session)
         raise RuntimeError("Page.goto: Timeout 45000ms exceeded")
 
-    await server.ready()
+    await server.work.ready()
     with pytest.raises(RuntimeError, match="Timeout"):
-        await server._retrying(refuses)
+        await server.work.retrying(refuses)
 
     assert len(calls) == 1, "the failed navigation was run again"
 
 
 async def test_a_browser_that_is_gone_is_rebuilt_as_the_same_person(registry):
-    """The recovery this function exists for, kept: the sentence a closed
-    target gives is a browser that is gone, and the action is run again on a
-    replacement with the same identity."""
+    """The recovery this function exists for, kept: the TYPE a closed target
+    raises - one class since invisible-playwright 0.15.0, for a disposed
+    object and a closed pipe alike - is a browser that is gone, and the action
+    is run again on a replacement with the same identity."""
     calls = []
 
     async def gone_then_fine(session):
         calls.append(session)
         if len(calls) == 1:
-            raise RuntimeError("Target page, context or browser has been closed")
+            raise TargetClosedError("Target page, context or browser has been closed")
         return "done"
 
-    before = await server.ready()
-    got = await server._retrying(gone_then_fine)
+    before = await server.work.ready()
+    got, rebuilt = await server.work.retrying(gone_then_fine)
 
     assert got == "done"
+    assert rebuilt, "the rebuild happened and the answer did not say so"
     assert before.closed, "the dead browser was not discarded"
     assert calls[1] is not before, "the action was retried on the dead browser"
     assert calls[1].kwargs.get("seed") == before.kwargs.get("seed"), (
@@ -116,6 +118,6 @@ async def test_a_browser_that_reports_itself_dead_is_rebuilt_whatever_it_said(re
             raise RuntimeError("something the page said on its way down")
         return "done"
 
-    before = await server.ready()
-    assert await server._retrying(dies) == "done"
+    before = await server.work.ready()
+    assert await server.work.retrying(dies) == ("done", True)
     assert calls[1] is not before, "a browser that reported itself dead was kept"

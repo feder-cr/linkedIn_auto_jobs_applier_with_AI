@@ -25,6 +25,8 @@ from __future__ import annotations
 import asyncio
 from typing import Dict, Optional
 
+from invisible_playwright.async_api import TargetClosedError
+
 from .session import StealthSession
 
 # ⛔ `DEFAULT_SESSION_ID` MOVED TO `store.py`, WHICH IS WHAT IT NAMES: a
@@ -57,31 +59,26 @@ def _is_usable(session) -> bool:
         return False
 
 
-#: What a browser that is GONE says, from the two layers that can say it. The
-#: vendored client raises `TargetClosedError` carrying the first sentence for
-#: any call on a page, context or browser that has closed; the Juggler bridge
-#: answers the other two when the pipe to Firefox is gone. Matched on the text
-#: because they reach a tool as plain exceptions from two classes that share no
-#: base worth importing here.
-CLOSED_SENTENCES = ("has been closed", "the pipe closed", "the pipe is closed")
-
-
 def looks_closed(failure: BaseException) -> bool:
     """Whether this failure is the browser being gone, rather than the page
     refusing.
 
-    ⛔ THE DIFFERENCE IS A BROWSER. `_retrying` in the server used to treat
-    EVERY exception as a dead browser: close the one it had, build a new one,
-    retry. A domain that does not resolve, a site that answers slowly, a click
-    that finds nothing - each threw away a healthy browser with its cookies,
-    its logins and its pages, and opened a fresh one to fail the same way
-    again. Measured 2026-09-14: `NS_ERROR_UNKNOWN_HOST` on the second command
-    of a conversation cost the interface's `main` browser, and the person
-    watched it close and reopen - the window was headed - for a typo in a
-    domain name. The retry then failed identically, so nothing was gained.
+    ⛔ THE DIFFERENCE IS A BROWSER. `retrying` used to treat EVERY exception
+    as a dead browser: close the one it had, build a new one, retry. A domain
+    that does not resolve, a site that answers slowly, a click that finds
+    nothing - each threw away a healthy browser with its cookies, its logins
+    and its pages, and opened a fresh one to fail the same way again.
+    Measured 2026-09-14: `NS_ERROR_UNKNOWN_HOST` on the second command of a
+    conversation cost the interface's `main` browser, and the person watched
+    it close and reopen - the window was headed - for a typo in a domain name.
+
+    ⛔ THE TYPE, NOT THE SENTENCE. For one release (0.50.0) this matched three
+    sentences, because the engine's wrapper raised two classes with one name
+    for a disposed object and a nameless error for a closed pipe. From
+    invisible-playwright 0.15.0 both are ONE class, exported from its public
+    API, which is the floor `pyproject.toml` declares for exactly this line.
     """
-    text = str(failure)
-    return any(sentence in text for sentence in CLOSED_SENTENCES)
+    return isinstance(failure, TargetClosedError)
 
 
 class BrowserRegistry:
