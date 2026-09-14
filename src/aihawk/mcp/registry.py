@@ -29,6 +29,7 @@ from invisible_playwright.async_api import TargetClosedError
 
 from .plan import plan_session
 from .session import StealthSession
+from ..quiet import swallow
 
 # ⛔ `DEFAULT_SESSION_ID` MOVED TO `store.py`, WHICH IS WHAT IT NAMES: a
 # piece of work, and so a file. It lived here only as the default argument of
@@ -139,10 +140,9 @@ class BrowserRegistry:
         """
         if self.on_change is None:
             return
-        try:
+        with swallow("a file that could not be written down is not a reason "
+                     "to hand back an error instead of the browser"):
             self.on_change(key)
-        except Exception:
-            pass
 
     def _lock(self, key: str) -> asyncio.Lock:
         # One lock per id, so two clients racing to first-use the same session
@@ -290,12 +290,9 @@ class BrowserRegistry:
             return
         self._tabs[key] = max(self._tabs.get(key, 0),
                                      getattr(session, "_counter", 0) or 0)
-        try:
+        with swallow("a session being discarded is already suspect, and a close "
+                     "that fails must not stop the replacement from starting"):
             await session.close()
-        except Exception:
-            # A session being discarded is already suspect; a failure to close
-            # it cleanly must not stop the replacement from starting.
-            pass
 
     async def drop(self, key: str) -> None:
         """Throw a browser away so the next `ensure` builds a fresh one."""

@@ -43,6 +43,7 @@ from typing import Awaitable, Callable, Optional
 from . import actions, identity, plan, store
 from .registry import BrowserRegistry
 from .session import StealthSession
+from ..quiet import swallow
 
 #: The browser a caller means when it names nothing.
 DEFAULT_BROWSER_ID = "main"
@@ -262,13 +263,11 @@ class Work:
                 # is what two fixed roles exist to rule out.
                 continue
             browsers[name] = wrote
-        try:
+        with swallow("a write that fails costs the saved file and nothing else"):
             if not browsers:
                 store.erase(self.session_id)
                 return
             store.save(self.session_id, browsers, focus=DEFAULT_BROWSER_ID)
-        except Exception:
-            pass
 
     def note_tabs(self, key: str, urls) -> None:
         """Remember where this browser's pages are, and write it down if it
@@ -478,20 +477,16 @@ class Work:
         owed = self._tabs_owed.pop(at, None)
         session = await self.registry.ensure(at)
         if owed:
-            try:
+            # It is up and it is the right person: refusing to hand it back
+            # would turn a stale bookmark into a session nobody can use.
+            with swallow("a url that will not load must not cost the browser"):
                 await actions.navigate(session, owed[-1])
-            except Exception:
-                # A url that will not load must not cost the browser. It is
-                # up, it is the right person, and refusing to hand it back
-                # would turn a stale bookmark into a session nobody can use.
-                pass
-        try:
-            # The urls only. `describe_pages` also fetches each page's TITLE,
-            # a round trip per page, on every command - including every frame
-            # of the live view, twenty-five times a second.
+        # The urls only. `describe_pages` also fetches each page's TITLE, a
+        # round trip per page, on every command - including every frame of
+        # the live view, twenty-five times a second.
+        with swallow("a browser that cannot say where its pages are is one "
+                     "command stale, not broken"):
             self.note_tabs(at, session.where_pages_are())
-        except Exception:
-            pass
         return session
 
     def looking(self, role: Optional[str] = None) -> Optional[StealthSession]:

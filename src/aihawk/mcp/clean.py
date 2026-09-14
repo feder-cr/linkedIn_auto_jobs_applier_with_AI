@@ -29,6 +29,8 @@ from __future__ import annotations
 import re
 from typing import Dict, Optional
 
+from ..quiet import swallow
+
 from selectolax.lexbor import LexborHTMLParser, LexborNode
 
 # selectolax over lxml, decided by measurement rather than reputation: on six
@@ -426,11 +428,9 @@ def _unwrap_pointless_wrappers(tree: LexborHTMLParser) -> None:
             own = (node.text(deep=False) or "").strip()
             if own:
                 continue
-            try:
+            with swallow("a node that will not unwrap stays as it is"):
                 node.unwrap()
                 removed += 1
-            except Exception:
-                pass
         if not removed:
             break
 
@@ -508,10 +508,8 @@ def _prune_to_scaffold(tree: LexborHTMLParser) -> None:
             # model can reason about, so it stays even with nothing clickable.
             if text and len(text) <= MAX_LABEL_CHARS:
                 continue
-            try:
+            with swallow("a node that will not go stays"):
                 child.decompose()
-            except Exception:
-                pass
 
     walk(body)
 
