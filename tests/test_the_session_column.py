@@ -1029,3 +1029,31 @@ def test_deleting_a_conversation_takes_two_presses_and_no_dialog():
     assert "browsers go with it" in kill, (
         "the armed control does not say that the browsers go with the "
         "conversation, which is what the dialog used to say: %s" % kill)
+
+
+def test_the_column_is_not_rebuilt_where_nobody_can_see_it():
+    """⛔ ONCE PER TURN, INTO A PANEL THAT IS CLOSED. The end of every turn asked
+    the server for the list and rebuilt the DOM inside `#rail`, which is
+    `hidden` almost always - a round trip and a rebuild for a column nobody is
+    looking at, on a page that stops every other pump the moment the tab is
+    hidden for exactly this reason.
+
+    The boot line already carried the guard, so the rule was known and applied
+    in one of the two places. Every OTHER call comes from the panel itself,
+    which is open by definition; the one that fires on its own is this.
+
+    Known-bad: drop the guard, and the work comes back.
+    """
+    import re
+
+    from aihawk.ui import PAGE
+
+    code = re.sub(r"/\*.*?\*/", "", PAGE, flags=re.S)
+    turn = code[code.index("case 'busy':"):]
+    turn = turn[:turn.index("case 'you':")]
+    assert "drawChats()" in turn, (
+        "the end of a turn no longer redraws the column, so a conversation "
+        "named by its first instruction keeps its placeholder name")
+    assert "!$('rail').hidden" in turn, (
+        "the end of a turn rebuilds the column with the panel closed: %s"
+        % turn[turn.index("drawChats") - 60:turn.index("drawChats") + 20])

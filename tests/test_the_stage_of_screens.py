@@ -275,7 +275,7 @@ def fleet_after(ok: bool, body: dict, before) -> dict:
     i = PAGE.index("async function drawFleet()")
     js = (
         "const stage = {fleet: %s, focus: 'main', pinned: null, grid: 2, turn: 0};\n"
-        "function drawStage(){}\n"
+        "function drawStage(){}\nfunction paintWhere(){}\n"
         "async function door(){ return {ok: %s, json: async () => (%s)}; }\n"
         % (json.dumps(before), "true" if ok else "false", json.dumps(body))
         + PAGE[i:PAGE.index(chr(10) + "}", i) + 2]
@@ -313,3 +313,62 @@ def test_a_poll_that_failed_leaves_the_workspace_it_already_has():
     moved = fleet_after(True, {"browsers": two[:1], "focus": "main"}, two)
     assert moved["ids"] == ["main"], (
         "an answer that DID arrive has to be believed: %r" % (moved,))
+
+
+def big_for(fleet, pinned=None, focus="main"):
+    """Which cell the stage marks as the one to give the room to."""
+    i = PAGE.index("function drawStage()")
+    body = PAGE[i:PAGE.index(chr(10) + "}", i) + 2]
+    js = ("const box = {dataset:{}, style:{}, textContent:'', children:[],"
+          "  appendChild(){}, querySelectorAll: () => []};\n"
+          "const stage = {fleet: %s, grid: %d, pinned: %s, focus: %s, turn: 0};\n"
+          "const watched = () => stage.pinned || stage.focus;\n"
+          "function onStage(){ return stage.fleet.slice(0, stage.grid); }\n"
+          "function dropFrames(){}\n"
+          "function screenFor(){ return {}; }\n"
+          "function setState(){}\n"
+          "const emptyCell = {cloneNode: () => ({})};\n"
+          "const right = {dataset:{}};\n"
+          "const $ = () => box;\n"
+          % (json.dumps(fleet), 2 if len(fleet) > 1 else 1,
+             json.dumps(pinned), json.dumps(focus))
+          + body
+          + "\ndrawStage();"
+            "\nprocess.stdout.write(JSON.stringify({big: box.dataset.big || null,"
+            " grid: box.dataset.grid}));")
+    done = subprocess.run([NODE, "-e", js], capture_output=True, text=True,
+                          encoding="utf-8", timeout=30)
+    assert done.returncode == 0, "drawStage threw:\n%s" % done.stderr
+    return json.loads(done.stdout)
+
+
+def test_the_screen_somebody_pinned_gets_the_room():
+    """⛔ CLICKING A SCREEN MARKED IT AND LEFT IT THE SIZE OF THE OTHER ONE. With
+    two browsers open you always watched at half width, and reading a form the
+    agent is filling in is most of what watching IS.
+
+    The other screen stays on the stage rather than going away: the agent may
+    move to it at any moment, and losing sight of that is worse than a narrow
+    picture. And it only happens when the PERSON has pinned one - the layout
+    never moves on its own, which is the line this page draws everywhere
+    between the agent's hand and the reader's eye.
+
+    Known-bad, two: give the room to the FOCUSED screen, and the layout jumps
+    every time the agent changes browser; number the cells from zero, and the
+    stylesheet gives the room to the wrong one.
+    """
+    two = up("main", "support")
+
+    assert big_for(two)["big"] is None, (
+        "the stage gives one screen the room with nobody having asked")
+    assert big_for(two, focus="support")["big"] is None, (
+        "the agent moving browser resizes the panes under the person watching")
+    assert big_for(two, pinned="main")["big"] == "1", (
+        "the screen somebody pinned is not the one the stylesheet is told about")
+    assert big_for(two, pinned="support")["big"] == "2", (
+        "the cells are numbered from zero, so the room goes to the other one")
+
+    rule = PAGE[PAGE.index('#stage[data-grid="2"][data-big="1"]'):]
+    rule = rule[:rule.index("}") + 1]
+    assert "2fr 1fr" in rule, (
+        "the pinned screen is not given more of the stage: %s" % rule)

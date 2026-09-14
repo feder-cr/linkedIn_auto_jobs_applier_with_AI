@@ -136,6 +136,7 @@ def test_the_page_says_so_when_the_server_moves_under_it():
         "globalThis.build = '';",
         "globalThis.stage = {fleet: [], focus: '', pinned: null, grid: 1, turn: 0};",
         "globalThis.drawStage = () => {};",
+        "globalThis.paintWhere = () => {};",
         "let answers = [{browsers: [], focus: '', build: '0.59.0'},",
         "               {browsers: [], focus: '', build: '0.59.0'},",
         "               {browsers: [], focus: '', build: '0.60.0'},",

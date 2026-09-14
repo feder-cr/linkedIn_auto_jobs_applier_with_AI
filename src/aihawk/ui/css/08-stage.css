@@ -18,6 +18,12 @@
 #stage{ flex:1; min-height:0; padding:var(--s3); display:grid; gap:var(--s3) }
 #stage[data-grid="1"]{ grid-template-columns:1fr }
 #stage[data-grid="2"]{ grid-template-columns:1fr 1fr }
+/* The screen somebody pinned takes two thirds and the other keeps a third, so
+   what they chose to read is readable and what the agent might do next is
+   still in sight. Which of the two it is comes from the page, because only the
+   page knows the order the server listed them in. */
+#stage[data-grid="2"][data-big="1"]{ grid-template-columns:2fr 1fr }
+#stage[data-grid="2"][data-big="2"]{ grid-template-columns:1fr 2fr }
 /* One or two, and no template for more: a session holds `main` and
    `support`, so there is no third screen to lay out. The 2x2 templates for
    three and four stood here until 0.52.0, for layouts no fleet could fill. */
