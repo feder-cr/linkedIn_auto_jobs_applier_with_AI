@@ -926,3 +926,55 @@ async def test_a_page_that_joins_an_idle_service_is_told_the_turn_is_over():
 # of those wrong answers look exactly like right ones, so they are held by a
 # gate that EXECUTES the function under a real engine, in
 # test_the_page_tells_the_truth.py, which is more than these four could do.
+
+
+async def test_a_cleared_conversation_carries_no_command_in_its_transcript():
+    """⛔ THE WORD THAT WIPES THE PAGE WAS WRITTEN INTO THE PAGE'S OWN HISTORY,
+    AND IT COULD EAT A TYPED SENTENCE.
+
+    `/chat/fresh` clears the transcript and then emits `fresh` so that every
+    open tab drops what it is showing. `emit` wrote everything but `busy` into
+    the history, so that word landed in the transcript it had just emptied and
+    became the ONE thing a cleared conversation had written down. Found by
+    reading a real saved file rather than by a test: the developer's own
+    `default.json` held exactly one event, and it was this.
+
+    What it costs is the thing this interface says everywhere it must not do.
+    A replayed `fresh` runs `wipe()` in the page, and `wipe()` calls
+    `setQueued(null)` - so somebody who had typed a follow-up while the agent
+    was working, on a conversation cleared at any point in its past, lost that
+    sentence as soon as the stream reconnected from before the stored event.
+    A server restart does exactly that.
+
+    Known-bad: put `fresh` back into what `emit` records. The first assertion
+    goes red, and so does the last, which is the one that says a page joining
+    later is never told to throw anything away.
+    """
+    svc = ChatService(FakeLink(), SilentBrain())
+    app = build_app(Sessions.around(svc))
+
+    await svc.emit("you", "the first instruction")
+    await svc.emit("said", "the first answer")
+    assert len(svc.history) == 2
+
+    # What the route does: clear, then tell every listener.
+    assert svc.reset() is True
+    await svc.emit("fresh", "1")
+
+    assert svc.history == [], (
+        "a cleared conversation kept something in its transcript: %r" % svc.history)
+
+    # And it stays out once the conversation is used again, so a page resuming
+    # from before it is not told to drop what it holds.
+    await svc.emit("you", "the second instruction")
+    await svc.emit("busy", "1")
+    await svc.emit("said", "the second answer")
+    assert [e["kind"] for e in svc.history] == ["you", "said"], (
+        "state is being written into the transcript: %r"
+        % [e["kind"] for e in svc.history])
+
+    events = [r for r in app.routes if r.path == "/chat/events"][0]
+    joined = await _first_events(await events.endpoint(_request(app)), want=5)
+    assert [e["kind"] for e in joined if e["kind"] == "fresh"] == [], (
+        "a page joining a conversation that was cleared earlier was told to "
+        "wipe, which throws away anything it had queued: %r" % joined)
