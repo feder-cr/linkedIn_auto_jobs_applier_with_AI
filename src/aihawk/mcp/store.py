@@ -25,8 +25,8 @@ import time
 from pathlib import Path
 from typing import Dict, Optional
 
-from ..storage import (DEFAULT_SESSION_ID, home, safe_name as _safe,
-                       write_atomically)
+from ..storage import (DEFAULT_SESSION_ID, erase as _erase, home,
+                       read_json, safe_name as _safe, write_atomically)
 
 
 #: The piece of work a caller that names none is in, and so the file it
@@ -74,13 +74,15 @@ def save(session_id: str, browsers: Dict[str, dict],
     where = path_of(session_id)
     payload = {
         "id": session_id,
-        # Inert, and kept anyway: nothing has read it since `session_list` was
-        # removed, and no caller ever passed a name, so it has always equalled
-        # `id`. Dropping it would change the bytes of every saved file to
-        # delete a line, which is not a trade worth making for a field that
-        # costs nothing and that an older build rolled back onto this directory
-        # would still expect to find.
-        "name": session_id,
+        # ⛔ `name` STOOD HERE AND WAS ALWAYS `id`. It was kept on the argument
+        # that an older build rolled back onto this directory would expect it -
+        # and no build ever read it: its one reader was `known()`, which went
+        # with the `session_list` tool when MCP stopped having a session
+        # concept. A field that is a copy of the field above it, that nothing
+        # reads, is the same thing `running` and `limit` were one layer up.
+        # Files already on disk still carry it; `load` hands back what it
+        # finds and `remembered()` reads two keys, so an old file is read by a
+        # new build exactly as it was.
         "saved": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "focus": focus,
         "browsers": browsers,
@@ -93,16 +95,12 @@ def save(session_id: str, browsers: Dict[str, dict],
 def load(session_id: str) -> Optional[dict]:
     """One session as it was written, or None if there is nothing to read.
 
-    A file that will not parse answers None as well. The alternative is raising
-    on a server's first call because something once wrote a broken byte, and a
-    session that cannot be read is exactly as usable as one that was never
-    saved.
+    Why an unparsable file answers None rather than raising is in
+    `storage.read_json`, which is where that decision lives for both halves
+    of a session. It is not repeated here: written twice it would be two
+    accounts of one rule, free to disagree.
     """
-    where = path_of(session_id)
-    try:
-        return json.loads(where.read_bytes().decode("utf-8"))
-    except Exception:
-        return None
+    return read_json(path_of(session_id))
 
 
 # ⛔ `known()` STOOD HERE, listing every saved session newest first. Its only
@@ -113,13 +111,6 @@ def load(session_id: str) -> Optional[dict]:
 # `known_chats` below.
 
 
-def erase(session_id: str) -> bool:
-    """Forget a saved session. Answers whether there was one."""
-    where = path_of(session_id)
-    try:
-        where.unlink()
-        return True
-    except FileNotFoundError:
-        return False
-    except Exception:
-        return False
+def erase(session_id: str) -> None:
+    """Forget a saved session."""
+    _erase(path_of(session_id))

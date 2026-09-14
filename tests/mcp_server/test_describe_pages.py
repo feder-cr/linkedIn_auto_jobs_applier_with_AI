@@ -72,4 +72,3 @@ async def test_a_page_that_will_not_answer_contributes_what_it_can():
 async def test_no_pages_is_an_empty_list_rather_than_an_error():
     s = _session_with()
     assert await s.describe_pages() == []
-    assert s.where_pages_are() == []

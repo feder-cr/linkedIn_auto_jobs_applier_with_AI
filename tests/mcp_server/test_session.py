@@ -87,7 +87,12 @@ async def test_a_page_the_site_opened_is_seen_without_being_registered():
     s._context.pages.append(popup)          # `window.open`, not `new_page`
 
     assert s.page() is popup
-    assert s.where_pages_are() == ["about:blank", "https://popup.test/"]
+    # Both pages are seen, in the order they were opened, and the newest is
+    # the one a command drives. Read through `describe_pages`, which is the
+    # one thing that answers "where are the pages" since `where_pages_are`
+    # went in 0.56.0 with its last caller.
+    assert [r["url"] for r in await s.describe_pages()] == [
+        "about:blank", "https://popup.test/"]
 
 
 @pytest.mark.asyncio

@@ -1,4 +1,4 @@
-"""The three things both halves of a session need to write themselves down.
+"""The things both halves of a session need to write themselves down.
 
 A session is kept in two files by two programs: the browsers by the MCP
 server (`aihawk.mcp.store`) and the conversation by the interface
@@ -6,18 +6,29 @@ server (`aihawk.mcp.store`) and the conversation by the interface
 id becomes a file name, or the join between them breaks; and they must both
 replace a file without ever leaving a half-written one behind.
 
-⛔ THOSE THREE THINGS WERE WRITTEN TWICE. `home()` and the id sanitiser lived
-in the server's module and the interface reached into it to borrow them, which
-is how the interface's persistence came to live inside the MCP package at all.
-The atomic write was copied outright: four lines, in both files, with only one
-of the two carrying the comment explaining why it has to be `write_bytes`.
-Two copies of one rule is the arrangement where a fix reaches one of them.
+⛔ THOSE THINGS WERE WRITTEN TWICE. `home()` and the id sanitiser lived in the
+server's module and the interface reached into it to borrow them, which is how
+the interface's persistence came to live inside the MCP package at all. The
+atomic write was copied outright: four lines, in both files, with only one of
+the two carrying the comment explaining why it has to be `write_bytes`. Two
+copies of one rule is the arrangement where a fix reaches one of them.
+
+⛔ AND READING WAS STILL WRITTEN TWICE UNTIL 0.56.0, which the first pass
+missed because it was looking for duplicated VALUES rather than a duplicated
+RULE. `store.load` and `chats.load_chat` were the same four lines with a
+different path, and what they carry is not a value at all: it is the decision
+that a file which will not parse is exactly as usable as one that was never
+saved. Deleting was the same again. Both now live here, once.
 """
 from __future__ import annotations
 
+import json
 import os
 import sys
 from pathlib import Path
+from typing import Optional
+
+from .quiet import swallow
 
 #: The id of the session a process serves when nobody names one.
 #:
@@ -75,3 +86,38 @@ def write_atomically(where: Path, blob: bytes) -> None:
     beside = where.with_suffix(where.suffix + ".writing")
     beside.write_bytes(blob)
     os.replace(beside, where)
+
+
+def read_json(where: Path) -> Optional[dict]:
+    """What that file holds, or None if there is nothing to read.
+
+    A file that will not parse answers None as well, and that is the decision
+    rather than a shortcut: the alternative is raising on a server's first
+    call because something once wrote a broken byte, and a saved thing that
+    cannot be read is exactly as usable as one that was never saved.
+
+    Written here rather than in each half, because it is a RULE and not a
+    value - and a rule copied into two files is a rule that gets changed in
+    one of them.
+    """
+    try:
+        return json.loads(where.read_bytes().decode("utf-8"))
+    except Exception:
+        return None
+
+
+def erase(where: Path) -> None:
+    """Delete that file, if it is there.
+
+    ⛔ IT ANSWERS NOTHING, WHERE BOTH COPIES ANSWERED A BOOL NOBODY READ. The
+    two callers threw it away, and the value was ambiguous on top of being
+    unread: `False` meant "there was nothing to delete" and "it could not be
+    deleted", which are opposite news. `Sessions.forget` has the same defect
+    written into its own docstring, from the day it answered `False` for a
+    session somebody else had already deleted and the page said it was still
+    working. A caller that needs to know whether a file was there asks before,
+    and nothing here does.
+    """
+    with swallow("a file that is not there is already erased, and one that "
+                 "will not go is not news to anybody who asked for it to go"):
+        where.unlink()

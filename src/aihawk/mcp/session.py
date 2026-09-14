@@ -116,17 +116,6 @@ class StealthSession:
             raise RuntimeError("this browser has no page open; browser_navigate opens one")
         return live[-1]
 
-    def where_pages_are(self) -> list[str]:
-        """The url of each page, and nothing else: the cheap half of
-        `describe_pages`, for callers that ask on every command."""
-        out = []
-        for page in self.pages():
-            with swallow("a page that cannot say where it is answers blank"):
-                out.append(page.url)
-                continue
-            out.append("")
-        return out
-
     async def describe_pages(self) -> list[dict]:
         """Each page as url, title and whether it is the one a command drives.
 
