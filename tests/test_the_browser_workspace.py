@@ -19,7 +19,9 @@ import re
 import pytest
 
 from aihawk.link import text_of
-from aihawk.web import PAGE, Sessions, build_app
+from aihawk.routes import build_app
+from aihawk.sessions import Sessions
+from aihawk.ui import PAGE
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.filterwarnings("ignore")]
 

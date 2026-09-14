@@ -23,7 +23,7 @@ import subprocess
 
 import pytest
 
-from aihawk.web import PAGE
+from aihawk.ui import PAGE
 
 NODE = shutil.which("node")
 pytestmark = pytest.mark.skipif(not NODE, reason="needs node to EXECUTE the page")

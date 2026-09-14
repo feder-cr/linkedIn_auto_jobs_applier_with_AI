@@ -133,10 +133,11 @@ def ui(openrouter_key, model, host, port, proxy, seed, headed, binary, profile_d
     by hand, no model and nothing spent, is the invisible_playwright
     library's job - same engine, Playwright's whole API.
     """
-    from .brain import OpenRouterBrain
+    from .agent import OpenRouterBrain
+    from .chat import DEFAULT_CHAT_ID
     from .llm import make_client
-    from .sessions import DEFAULT_CHAT_ID
-    from .web import Sessions, build_app
+    from .routes import build_app
+    from .sessions import Sessions
 
     # ⛔ THE RULE LIVES IN `llm.resolve_key`, AND UNTIL NOW THIS RE-IMPLEMENTED
     # IT. Both said the same thing - the flag beats the variable, an empty one

@@ -51,7 +51,7 @@ import pytest
 
 from aihawk.chat import DEFAULT_CHAT_ID
 from aihawk.sessions import Sessions
-from aihawk.web import build_app
+from aihawk.routes import build_app
 
 pytestmark = pytest.mark.asyncio
 

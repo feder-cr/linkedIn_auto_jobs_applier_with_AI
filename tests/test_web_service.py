@@ -18,11 +18,15 @@ import json
 import re
 import shutil
 import subprocess
+from types import SimpleNamespace
 
 import pytest
 
 from aihawk.link import text_of
-from aihawk.web import PAGE, ChatService, Sessions, build_app
+from aihawk.chat import ChatService
+from aihawk.routes import build_app
+from aihawk.sessions import Sessions
+from aihawk.ui import PAGE
 
 pytestmark = pytest.mark.asyncio
 
@@ -165,11 +169,7 @@ async def test_an_event_after_subscription_is_delivered_once_as_live():
     app = build_app(Sessions.around(svc))
     route = [r for r in app.routes if r.path == "/chat/events"][0]
 
-    class Req:
-        query_params = {}
-        headers: dict = {}
-
-    response = await route.endpoint(Req())
+    response = await route.endpoint(_request(app))
     await svc.emit("said", "only once")
     body = response.body_iterator
 
@@ -372,11 +372,7 @@ async def test_the_live_view_never_causes_a_browser_to_start():
     app = build_app(Sessions.around(svc))
     frame = [r for r in app.routes if r.path == "/live/frame"][0]
 
-    class Req:
-        query_params = {}
-        headers: dict = {}
-
-    resp = await frame.endpoint(Req())
+    resp = await frame.endpoint(_request(app))
     assert resp.status_code == 204
     assert [n for n, _ in link.calls] == ["browser_watch"], (
         "the pane asks for the picture and nothing else: %s"
@@ -435,8 +431,10 @@ class WatchingLink(FakeLink):
 
 
 async def _frame_route(link):
+    """The frame route over a fresh app, asked with a request naming no browser."""
     app = build_app(Sessions.around(ChatService(link, SilentBrain())))
-    return [r for r in app.routes if r.path == "/live/frame"][0].endpoint
+    endpoint = [r for r in app.routes if r.path == "/live/frame"][0].endpoint
+    return lambda: endpoint(_request(app))
 
 
 async def test_the_live_view_is_the_window_capture_and_never_a_screenshot():
@@ -455,8 +453,7 @@ async def test_the_live_view_is_the_window_capture_and_never_a_screenshot():
     link = WatchingLink()
     route = await _frame_route(link)
 
-    class Req: query_params = {}
-    resp = await route(Req())
+    resp = await route()
 
     assert resp.status_code == 200
     assert resp.headers["content-type"] == "image/jpeg"
@@ -489,8 +486,7 @@ async def test_a_capture_that_cannot_answer_says_why_instead_of_looking_idle():
     link = RefusingLink()
     route = await _frame_route(link)
 
-    class Req: query_params = {}
-    resp = await route(Req())
+    resp = await route()
 
     assert resp.status_code == 503
     assert "page.screencast" in json.loads(resp.body)["error"]
@@ -524,8 +520,7 @@ async def test_nothing_to_look_at_is_the_idle_pane_and_not_an_error():
     link = AsleepLink()
     route = await _frame_route(link)
 
-    class Req: query_params = {}
-    resp = await route(Req())
+    resp = await route()
 
     assert resp.status_code == 204, (
         "a browser that is not running was reported as a failure, so the pane "
@@ -607,12 +602,13 @@ async def test_the_page_shows_the_wait_and_ties_it_to_the_run():
     assert "if(busyNow && !r) waiting();" in PAGE
 
 
-class _Req:
-    """Enough of a request for the events route: it reads one header."""
-    query_params: dict = {}
-
-    def __init__(self, last_event_id: str = ""):
-        self.headers = {"last-event-id": last_event_id} if last_event_id else {}
+def _request(app, last_event_id: str = ""):
+    """Enough of a request for a route: the app it belongs to - which is
+    where a handler finds the registry of conversations - no query, and at
+    most the one header the events route reads."""
+    return SimpleNamespace(
+        app=app, query_params={},
+        headers={"last-event-id": last_event_id} if last_event_id else {})
 
 
 async def _first_events(resp, want=4, each=1.0):
@@ -788,14 +784,14 @@ async def test_a_reconnection_resumes_instead_of_replaying_the_whole_thing():
     for text in ("first", "second", "third"):
         await svc.emit("said", text)
 
-    fresh_eyes = await _first_events(await events.endpoint(_Req()), want=6)
+    fresh_eyes = await _first_events(await events.endpoint(_request(app)), want=6)
     said = [e for e in fresh_eyes if e["kind"] == "said"]
     assert [e["text"] for e in said] == ["first", "second", "third"]
 
     # What the browser would send back on a reconnection: the id of the last
     # event it actually saw.
     marker = "%s:%d" % (svc.epoch, len(svc.history) - 1)
-    again = await _first_events(await events.endpoint(_Req(marker)), want=4)
+    again = await _first_events(await events.endpoint(_request(app, marker)), want=4)
 
     assert [e for e in again if e["kind"] == "said"] == [], \
         "the whole conversation was replayed to a listener that already had it"
@@ -815,7 +811,7 @@ async def test_a_reconnection_carrying_another_conversation_is_told_to_wipe():
     events = [r for r in app.routes if r.path == "/chat/events"][0]
     await svc.emit("said", "from the conversation that is gone")
 
-    stale = await _first_events(await events.endpoint(_Req("999999999999:0")), want=5)
+    stale = await _first_events(await events.endpoint(_request(app, "999999999999:0")), want=5)
 
     kinds = [e["kind"] for e in stale]
     assert "fresh" in kinds, "a page holding another transcript was not told to drop it"
@@ -853,7 +849,7 @@ async def test_a_page_that_joins_a_run_in_flight_is_told_the_run_is_in_flight():
     assert svc.busy, "the service does not consider itself busy while a run runs"
 
     # A listener arriving now, which is what a reload is.
-    resp = await events.endpoint(_Req())
+    resp = await events.endpoint(_request(app))
     seen = await _first_events(resp)
 
     busy = [e for e in seen if e["kind"] == "busy"]
@@ -894,7 +890,7 @@ async def test_a_page_that_joins_an_idle_service_is_told_the_turn_is_over():
     app = build_app(Sessions.around(svc))
     events = [r for r in app.routes if r.path == "/chat/events"][0]
 
-    resp = await events.endpoint(_Req())
+    resp = await events.endpoint(_request(app))
     seen = await _first_events(resp)
 
     busy = [e for e in seen if e["kind"] == "busy"]
