@@ -5,7 +5,7 @@ import asyncio
 import time
 from typing import Dict, List, Optional
 
-from .agent import Brain
+from .agent import Brain, said_only
 from .link import Link
 from .quiet import swallow
 from . import chats
@@ -108,10 +108,17 @@ class ChatService:
 
         The turn is already finished and answered, and losing it to a full disk
         would be a strange way to report a full disk.
+
+        ⛔ WHAT GOES DOWN IS WHAT WAS SAID, AND THE SYSTEM MESSAGE IS NOT. It is
+        what this build asks the model to be, rebuilt on every run from the
+        prompt plus the server's own instructions, and `remember` has dropped
+        the saved one on the way back in since 2026-09-08 - so writing it was
+        writing something nothing would ever read. `said_only` is where that
+        rule lives, for this side and that one.
         """
         with swallow("a write that fails costs the saved conversation and nothing else"):
             chats.save_chat(self.session_id, self.name, self.history,
-                            list(getattr(self._brain, "messages", []) or []),
+                            said_only(getattr(self._brain, "messages", None)),
                             self.usage)
 
     def restore(self) -> bool:

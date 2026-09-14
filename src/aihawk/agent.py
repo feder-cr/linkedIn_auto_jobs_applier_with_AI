@@ -75,6 +75,30 @@ def system_message(instructions: str = "") -> dict:
     return {"role": "system", "content": text}
 
 
+def said_only(messages) -> List[dict]:
+    """The messages that are a TRANSCRIPT, which is everything anybody said.
+
+    The system message is not one of them. It is what this build asks the model
+    to be, it is rebuilt from `SYSTEM_PROMPT` plus the server's own instructions
+    on every run, and a copy of it travelling with a conversation is a copy of
+    CODE inside a file of DATA.
+
+    ⛔ THE HALF THAT READS THIS RULE HAS EXISTED SINCE 2026-09-08; THE HALF THAT
+    WRITES IT DID NOT. `remember` dropped the saved system message on the way
+    in, because restoring it wholesale put an OLD prompt back and every change
+    to the instructions reached new conversations only. Nothing stopped `save`
+    from writing it, so every saved conversation went on carrying one - measured
+    on the developer's own file, 1205 characters that nothing would ever read.
+    Harmless in itself, and exactly the shape this project keeps finding one
+    step later: the remedy for a stale duplicate is to stop WRITING it, not to
+    keep remembering to ignore it.
+
+    One function, both callers, so the two halves cannot come to disagree about
+    what a transcript is.
+    """
+    return [m for m in messages or [] if m.get("role") != "system"]
+
+
 Say = Callable[[str, str], Awaitable[None]]
 
 
@@ -405,9 +429,7 @@ class OpenRouterBrain(Brain):
         SAID; the instructions are what this build asks for.
         """
         if messages:
-            self._convo.messages = (
-                [system_message()]
-                + [m for m in messages if m.get("role") != "system"])
+            self._convo.messages = [system_message()] + said_only(messages)
         if usage:
             self._convo.usage.update(usage)
 
