@@ -86,6 +86,18 @@ function drawStage(){
      running browsers in `drawFleet`, so this is one or two, never a promise of
      more cells than there are. */
   box.dataset.grid = String(Math.min(stage.grid, Math.max(1, show.length)));
+  /* ⛔ AND THE SCREEN THE PERSON CHOSE GETS THE ROOM. Clicking a screen marked
+     it and left it exactly the size of the other one, so with two browsers open
+     you always watched at half width - and reading a form the agent is filling
+     is most of what watching IS. The other screen stays on the stage rather
+     than going away: the agent may move to it at any moment, and losing sight
+     of that is worse than a narrow picture.
+
+     Only when the PERSON has pinned one. The layout never moves on its own,
+     which is the same line this page draws everywhere between the agent's hand
+     and the reader's eye. */
+  const big = stage.pinned ? show.findIndex(b => b.id === stage.pinned) + 1 : 0;
+  if(big) box.dataset.big = String(big); else delete box.dataset.big;
   /* Only when the SET changes, or every poll would throw away the pictures and
      make the whole stage flash once a second for no new fact. */
   const sig = show.map(b => b.id + ((b.urls || []).length ? 'p' : '')
@@ -151,6 +163,9 @@ async function drawFleet(){
      the same single screen is the defect this page has written down twice. */
   stage.grid = stage.fleet.length >= 2 ? 2 : 1;
   drawStage();
+  /* Whoever changed the fleet says so to the bar that reads it: see the boot
+     line in the splitter for the clock this replaced. */
+  paintWhere();
 }
 
 /* Whatever was waiting when the page went away comes back into the composer

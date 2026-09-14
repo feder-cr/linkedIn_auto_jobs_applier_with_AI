@@ -26,28 +26,43 @@ function limits(){
                                   - px('--spine') - px('--split'))};
 }
 
+/* ⛔ THE THREE BOUNDS IN ONE PLACE, AND A FOURTH THING THEY IMPLY. They were
+   written out twice, here and in the reset, which is two chances to announce a
+   range that is not the one being clamped to.
+
+   ⛔ AND IT SAYS WHEN IT CANNOT MOVE AT ALL. The floor is the conversation's
+   narrowest and the ceiling is what is left after the picture's, so on a window
+   under about 957px the two meet: the ceiling collapses onto the floor and
+   dragging does nothing. Announced with a value, a floor and a ceiling all
+   equal, that is a control telling a screen reader it has a range while having
+   none, and telling a hand nothing at all. `aria-disabled` and not `disabled`,
+   for the reason the Clear button already carries: a dead control cannot say
+   why, and this one is still worth reaching to hear what it is. */
+function announce(min, max, now){
+  const bar = $('split');
+  bar.setAttribute('aria-valuenow', String(Math.round(now)));
+  bar.setAttribute('aria-valuemin', String(min));
+  bar.setAttribute('aria-valuemax', String(max));
+  if(max <= min) bar.setAttribute('aria-disabled', 'true');
+  else bar.removeAttribute('aria-disabled');
+}
+
 function splitTo(px, remember){
   const {min, max} = limits();
   const w = Math.round(Math.min(max, Math.max(min, px)));
   $('left').style.width = w + 'px';
-  $('split').setAttribute('aria-valuenow', String(w));
-  $('split').setAttribute('aria-valuemin', String(min));
-  $('split').setAttribute('aria-valuemax', String(max));
+  announce(min, max, w);
   if(remember){ try { localStorage.setItem(SPLITKEY, String(w)); } catch(e) {} }
 }
 
 function splitReset(){
   try { localStorage.removeItem(SPLITKEY); } catch(e) {}
   $('left').style.width = '';
-  $('split').setAttribute('aria-valuenow',
-                          String(Math.round($('left').getBoundingClientRect().width)));
-  /* The ceiling too: this is the FIRST-RUN path, so without it a range widget
-     was announced with a floor and a value and no top for every new user.
-     And the floor, which was in the markup as a literal: three numbers
-     describing one range, from one place. */
+  /* This is the FIRST-RUN path, so it is also where the bounds are said for
+     the first time: without it a range widget was announced with a value and
+     no top for every new user. */
   const {min, max} = limits();
-  $('split').setAttribute('aria-valuemin', String(min));
-  $('split').setAttribute('aria-valuemax', String(max));
+  announce(min, max, $('left').getBoundingClientRect().width);
 }
 
 function splitter(){
@@ -114,5 +129,12 @@ function splitter(){
 paint(); listen(); splitter();
 /* The three pumps, one shape, one place: the frames at the pace the stage
    asks for, the address every two seconds, the fleet every three. */
-every(pause, onePass); every(2000, paintWhere); every(3000, drawFleet);
+/* ⛔ TWO CLOCKS FOR ONE FACT, AND NOW ONE. The address bar had a pump of its
+   own at two seconds, reading a fleet that a different pump refreshed at
+   three: it could only ever redraw the same answer between two arrivals, and
+   the one moment it had to be quick - a screen being clicked - already calls
+   it directly. Whoever changes the fleet tells it. It is the same shape as the
+   `/live/address` route, removed for the same reason: a second reader of one
+   fact, on a clock of its own. */
+every(pause, onePass); every(3000, drawFleet);
 if(!$('rail').hidden) drawChats();

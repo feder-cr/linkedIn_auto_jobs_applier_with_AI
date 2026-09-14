@@ -104,7 +104,13 @@ const onEvent = (e) => {
                        the moment a new session is used until it is redrawn.
                        Redrawn on the end of a turn and not on its start: the
                        turn count beside the name is only right once. */
-                    if(!r) drawChats();
+                    /* ⛔ AND NOT WHILE NOBODY CAN SEE IT. This asks the
+                       server for the list and rebuilds a DOM inside a panel
+                       that is `hidden` almost always - once per turn, for a
+                       column nobody is looking at. The boot line below already
+                       carries this guard; the rule was known and applied in one
+                       of the two places. Opening the panel draws it. */
+                    if(!r && !$('rail').hidden) drawChats();
                     if(queued){ const t = queued; setQueued(null); send(t); } }
       paint(); break;
     /* ⛔ AS AN ANSWER, AND A REPLAY IS THE ONLY PLACE IT SHOWS. A sentence

@@ -41,7 +41,7 @@ const LEFT = {
   style: {width: ''},
   getBoundingClientRect: () => ({width: parseFloat(LEFT.style.width) || 530, left: 0}),
 };
-const SPLIT = {attrs: {}, setAttribute(k, v){ this.attrs[k] = v; }};
+const SPLIT = {attrs: {}, setAttribute(k, v){ this.attrs[k] = v; }, removeAttribute(k){ delete this.attrs[k]; }};
 const $ = id => (id === 'left' ? LEFT : SPLIT);
 const window = {innerWidth: 1920};
 /* ⛔ THE LIMITS COME FROM THE STYLESHEET NOW, so the harness has to serve
@@ -223,3 +223,52 @@ def test_the_numbers_the_split_is_made_of_live_in_one_place():
     assert got["aria-valuemin"] == str(int(PX("--pane-min"))), (
         "the floor announced to a screen reader is not the floor the drag "
         "obeys: %r" % (got,))
+
+
+def test_the_separator_says_when_it_cannot_move():
+    """⛔ A CONTROL THAT ANNOUNCES A RANGE IT DOES NOT HAVE. The floor is the
+    conversation's narrowest and the ceiling is what is left after the
+    picture's, so under a certain window width the two meet. Below that the
+    separator was announced to a screen reader with a value, a floor and a
+    ceiling all equal - a range of zero - and to a hand as a thing that can be
+    dragged and does nothing.
+
+    Computed from the page's own tokens rather than repeated here: the ceiling
+    collapses onto the floor when the window is narrower than the two minimums
+    plus the two strips outside the split.
+
+    `aria-disabled` and not `disabled`, for the reason the Clear button already
+    carries: a dead control cannot say why, and this one is still worth
+    reaching to hear what it is.
+
+    Known-bad, two: drop the line, and a range of zero is announced as a range;
+    set it always, and a separator that works says it does not.
+    """
+    tight = PX("--pane-min") + PX("--stage-min") + PX("--spine") + PX("--split")
+
+    stuck = clamp(700, width=int(tight) - 60)
+    assert stuck["attrs"]["aria-valuemin"] == stuck["attrs"]["aria-valuemax"], (
+        "the bench is not in the case being tested: %r" % (stuck["attrs"],))
+    assert stuck["attrs"].get("aria-disabled") == "true", (
+        "the separator announces a range it cannot move in: %r" % (stuck["attrs"],))
+
+    roomy = clamp(700, width=1920)
+    assert "aria-disabled" not in roomy["attrs"], (
+        "a separator that can be dragged says it cannot: %r" % (roomy["attrs"],))
+
+
+def test_the_three_bounds_are_written_in_one_place():
+    """They were written out twice, in the setter and in the reset, which is
+    two chances to announce a range that is not the one being clamped to.
+
+    Known-bad: set any of them anywhere but in `announce`.
+    """
+    code = re.sub(r"/\*.*?\*/", "", PAGE, flags=re.S)
+    for bound in ("aria-valuenow", "aria-valuemin", "aria-valuemax"):
+        assert code.count("'" + bound + "'") == 1, (
+            "%s is written in more than one place, so the bounds can disagree "
+            "with the clamp" % bound)
+    assert "aria-valuenow=" not in PAGE, (
+        "the markup carries a literal value for the separator again, which is "
+        "the second copy of a number the script owns - the same argument the "
+        "comment beside it makes about the floor")

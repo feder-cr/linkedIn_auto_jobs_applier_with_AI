@@ -314,8 +314,17 @@ def test_the_workspace_has_no_strip_and_no_pump_of_its_own():
 
     # Three pumps, one shape, started from one line.
     started = re.findall(r"every\(([^,]+), (\w+)\);", code)
-    assert sorted(p for _, p in started) == ["drawFleet", "onePass", "paintWhere"], (
-        "the page's pumps are not the three started through `every`: %r" % started)
+    # ⛔ TWO, AND IT WAS THREE. The address bar had a clock of its own at two
+    # seconds, reading a fleet that a different clock refreshed at three: it
+    # could only ever redraw the same answer between two arrivals. Whoever
+    # changes the fleet tells it now, and the one moment it has to be quick - a
+    # screen being clicked - already called it directly. Same shape as the
+    # `/live/address` route, removed for the same reason.
+    assert sorted(p for _, p in started) == ["drawFleet", "onePass"], (
+        "the page's pumps are not the two started through `every`: %r" % started)
+    assert "paintWhere();" in code[code.index("async function drawFleet()"):], (
+        "nothing tells the address bar when the fleet changed, so it is only "
+        "as fresh as the next thing that happens to call it")
     assert "slowTick" not in code and "SLOW_MS" not in code, (
         "the preview loop is back, refreshing a row that cannot hold a picture")
 
