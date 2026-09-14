@@ -572,24 +572,95 @@ def test_the_parser_has_a_floor():
 
 
 def test_a_row_is_only_collapsed_when_it_actually_fits():
-    """The threshold was 120 characters into a track that shows about 48, so 43
-    rows of a live transcript were cut off AND had their disclosure removed. A
-    count in one unit standing in for a fit in another is the same defect this
-    project recorded when `ch` was mistaken for a character.
+    """⛔ MEASURED, NOT COUNTED, AND THE OLD CRITERION WAS WRONG IN KIND.
 
-    Known-bad: raise the threshold back above what the box holds.
+    A row keeps its disclosure only when its label FITS. It used to be decided
+    by counting the characters of the RESULT against a constant, while the row
+    also carries the verb and the argument, in a track the stylesheet sizes:
+    measured on the live page, 266px on some rows and 376 on others, against
+    the 416 the comment assumed. A row could therefore be cut off by the
+    ellipsis AND have had its chevron removed for being short, leaving its text
+    reachable only by resting a pointer on it.
+
+    Measured on a real transcript of 82 rows before this change: 39 had no
+    chevron, 29 were cut, THIRTEEN were both. The same defect is recorded in
+    this file's history at 120 characters, where the fix was to lower the
+    number - which reduced it and could not remove it.
+
+    Known-bad, two: decide by `text.length` again, and the row that does not fit
+    keeps no body; skip the batch and measure nothing, and every row claims to
+    fit.
     """
-    got = re.search(r"const LONG = (\d+);", CODE)
-    assert got, "the threshold is gone"
-    assert int(got.group(1)) <= 60, (
-        "a row keeps its whole output on one line up to %s characters, in a "
-        "track that shows about 48" % got.group(1))
-    assert ".lab').title = text" in CODE, (
-        "a row that does not fit says nothing on hover either")
+    import json
+    import shutil
+    import subprocess
+
+    import pytest
+
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("needs node to EXECUTE the decision")
+
+    def whole(start, end):
+        src = CODE[CODE.index(start):]
+        return src[:src.index(end) + len(end)]
+
+    harness = [
+        "globalThis.VERB = {browser_navigate: ['Navigating','Navigated']};",
+        "globalThis.el = (tag, cls, t) => ({tag, cls, t});",
+        "const made = (fits) => {",
+        "  const lab = {b:{textContent:''}, code:{textContent:'https://x'},",
+        "    scrollWidth: fits ? 60 : 900, clientWidth: 100,",
+        "    querySelector(sel){ return sel === 'b' ? this.b : sel === 'code' ? this.code : null; },",
+        "    append(){}};",
+        "  const row = {querySelector: s => s === '.lab b' ? lab.b : lab,",
+        "               tabIndex: 0, lastElementChild:{textContent:''},",
+        "               removeAttribute(){ this.tabIndex = 0; }};",
+        "  return {dataset:{name:'browser_navigate', state:'run'}, firstElementChild: row,",
+        "          body: [], appendChild(n){ this.body.push(n); }, lab};",
+        "};",
+        "globalThis.requestAnimationFrame = fn => fn();",
+        "globalThis.timer = 0; globalThis.t0 = 0;",
+        "for (const name of ['clearInterval','orphan']) globalThis[name] = () => {};",
+        "globalThis.performance = {now: () => 0}; globalThis.dur = () => '0ms';",
+        "const look = d => ({body: d.dataset.body || null, tab: d.firstElementChild.tabIndex,",
+        "                    opens: d.body.map(n => n.cls)});",
+        "const out = {};",
+        "let d = made(true); globalThis.live = d;",
+        "land('result', 'navigated to https://x/ (HTTP 200)', false); out.fits = look(d);",
+        "d = made(false); globalThis.live = d;",
+        "land('result', 'navigated to https://x/ (HTTP 200)', false); out.cut = look(d);",
+        "d = made(true); globalThis.live = d;",
+        "land('result', 'one' + String.fromCharCode(10) + 'two', false); out.lines = look(d);",
+        "process.stdout.write(JSON.stringify(out));",
+    ]
+    js = (whole("function echoes(", chr(10) + "}") + chr(10)
+          + whole("function close(", chr(10) + "}") + chr(10)
+          + whole("function land(", chr(10) + "}") + chr(10)
+          + whole("let toFit = [];", chr(10) + "}") + chr(10)
+          + chr(10).join(harness))
+    done = subprocess.run([node, "-e", js], capture_output=True, text=True,
+                          encoding="utf-8", timeout=30)
+    assert done.returncode == 0, done.stderr
+    got = json.loads(done.stdout)
+
+    assert got["fits"] == {"body": "none", "tab": -1, "opens": []}, (
+        "a row that fits still opens something, so an ordinary run is a stack "
+        "of accordions and the keyboard walks through every one: %r" % (got,))
+    assert got["cut"]["body"] is None and got["cut"]["tab"] == 0, (
+        "a row whose label does not fit kept no way to open it, so its text is "
+        "reachable only by hovering: %r" % (got,))
+    assert got["cut"]["opens"] == ["out"], (
+        "the row that does not fit has no body to show: %r" % (got,))
+    assert got["lines"]["opens"] == ["out"] and got["lines"]["body"] is None, (
+        "output with a line break in it was put on a single-line row: %r" % (got,))
+
+    assert "const LONG" not in CODE, (
+        "the character count is back, and it is a count in one unit standing in "
+        "for a fit in another")
     assert "user-select:text; grid-column:2" in CODE, (
         "the label cannot be selected, so a truncated address cannot even be "
         "copied out")
-
 
 def test_no_pump_of_the_page_can_be_killed_by_one_exception():
     """⛔ A PUMP THAT RE-ARMS AFTER THE WORK DIES FOR GOOD ON THE FIRST
@@ -1060,11 +1131,14 @@ def test_a_step_nobody_landed_stops_claiming_to_be_running():
         "    /* only the outcome word: `land` also appends the inline result */",
         "    append(...xs){ for (const x of xs)",
         "      if (x && x.cls === 'mark') this.words.push(x.t); }};",
+        "  lab.scrollWidth = 10; lab.clientWidth = 100;   /* it fits */",
         "  const row = {querySelector: s => s === '.lab b' ? lab.b : lab,",
-        "               tabIndex: 0, lastElementChild:{textContent:''}};",
+        "               tabIndex: 0, lastElementChild:{textContent:''},",
+        "               removeAttribute(){ this.tabIndex = 0; }};",
         "  return {dataset:{name:'browser_click', state:'run'},",
         "          firstElementChild: row, appendChild(){}, lab};",
         "};",
+        "globalThis.requestAnimationFrame = fn => fn();",
         "globalThis.timer = 0; globalThis.t0 = 0; globalThis.turn = null;",
         "globalThis.queued = null; globalThis.LONG = 48;",
         "globalThis.busyNow = true;",
@@ -1099,6 +1173,7 @@ def test_a_step_nobody_landed_stops_claiming_to_be_running():
     js = (whole("function echoes(", chr(10) + "}") + chr(10)
           + whole("function close(", chr(10) + "}") + chr(10)
           + whole("function land(", chr(10) + "}") + chr(10)
+          + whole("let toFit = [];", chr(10) + "}") + chr(10)
           + whole("const onEvent =", chr(10) + "};") + chr(10)
           + chr(10).join(harness))
     done = subprocess.run([node, "-e", js], capture_output=True, text=True,
@@ -1372,6 +1447,7 @@ def test_clearing_the_conversation_leaves_the_page_able_to_explain_itself():
         "globalThis.n = 3; globalThis.timer = 0; globalThis.busyNow = true;",
         "globalThis.waited = () => {}; globalThis.setQueued = () => {};",
         "globalThis.clearInterval = () => {};",
+        "let zeroed = false; globalThis.seen = () => { zeroed = true; };",
         "wipe();",
         "process.stdout.write(JSON.stringify({left: kids}));",
     ]
@@ -1494,15 +1570,19 @@ def test_a_result_that_only_repeats_the_row_is_not_drawn_twice():
         "globalThis.VERB = {browser_click: ['Clicking','Clicked'],",
         "                   browser_navigate: ['Navigating','Navigated']};",
         "globalThis.el = (tag, cls, t) => ({tag, cls, t});",
-        "const made = (name, target) => {",
+        "const made = (name, target, fits) => {",
         "  const lab = {b:{textContent:''}, code:{textContent: target}, shown:[],",
         "    querySelector(sel){ return sel === 'b' ? this.b : sel === 'code' ? this.code : null; },",
         "    append(...xs){ for (const x of xs) if (x && x.cls === 'inline') this.shown.push(x.t); }};",
+        "  lab.scrollWidth = fits === false ? 900 : 10; lab.clientWidth = 100;",
         "  const row = {querySelector: s => s === '.lab b' ? lab.b : lab,",
-        "               tabIndex: 0, lastElementChild:{textContent:''}};",
-        "  return {dataset:{name, state:'run'}, firstElementChild: row, appendChild(){}, lab};",
+        "               tabIndex: 0, lastElementChild:{textContent:''},",
+        "               removeAttribute(){ this.tabIndex = 0; }};",
+        "  return {dataset:{name, state:'run'}, firstElementChild: row,",
+        "          body: [], appendChild(n){ this.body.push(n); }, lab};",
         "};",
-        "globalThis.timer = 0; globalThis.t0 = 0; globalThis.LONG = 48;",
+        "globalThis.requestAnimationFrame = fn => fn();",
+        "globalThis.timer = 0; globalThis.t0 = 0;",
         "for (const name of ['clearInterval','orphan']) globalThis[name] = () => {};",
         "globalThis.performance = {now: () => 0}; globalThis.dur = () => '0ms';",
         "const out = {};",
@@ -1517,6 +1597,7 @@ def test_a_result_that_only_repeats_the_row_is_not_drawn_twice():
     js = (whole("function echoes(", chr(10) + "}") + chr(10)
           + whole("function close(", chr(10) + "}") + chr(10)
           + whole("function land(", chr(10) + "}") + chr(10)
+          + whole("let toFit = [];", chr(10) + "}") + chr(10)
           + chr(10).join(harness))
     done = subprocess.run([node, "-e", js], capture_output=True, text=True,
                           encoding="utf-8", timeout=30)

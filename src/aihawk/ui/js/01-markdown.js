@@ -173,16 +173,8 @@ const VERB = {
   browser_status:['Checking browser','Checked browser']
 };
 const LEAD = /^(I will |I'll |I am |I'm |Let me |Now I will |Now I'll )/i;
-/* ⛔ MEASURED IN CHARACTERS, SPENT IN PIXELS - the same defect this project
-   recorded when `ch` was mistaken for a character, one surface later. The
-   label track is 416px wide at the default split, the mono face is 7.15px a
-   character at 13px and the verb in front eats about 67, so the row shows
-   about FORTY-EIGHT. The branch accepted a hundred and twenty. Counted on a
-   live transcript: 43 rows of 108 were cut off AND had their disclosure
-   removed, so the one thing that could have shown the rest was gone. */
-const LONG = 48;
 
 const thread = $('thread'), anchor = $('anchor'), log = $('log');
 let turn = null, live = null, hold = null, n = 0, t0 = 0, timer = 0;
-let busyNow = false, queued = null, pinned = false, settle = 0, quiet = 0;
+let busyNow = false, queued = null, pinned = false, settle = 0, quiet = 0, behind = 0;
 

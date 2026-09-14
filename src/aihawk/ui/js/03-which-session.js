@@ -129,12 +129,27 @@ const onEvent = (e) => {
   settleOnce();
 };
 
-new IntersectionObserver(([e]) => { $('jump').hidden = e.isIntersecting; },
+/* The way back, and it is the ONE control on screen while a reader is scrolled
+   up: it says how much has arrived since they left the bottom. */
+new IntersectionObserver(([e]) => { $('jump').hidden = e.isIntersecting;
+                                    if(e.isIntersecting) seen(); },
                          {root: log}).observe(anchor);
-/* ⛔ THE LARGEST MOTION ON THE PAGE, AND THE ONE THE REDUCED-MOTION BLOCK
-   COULD NOT REACH: a smooth scroll is asked for in script, not in CSS, so the
-   rule that quiets every animation had no say over it. Read at click time and
-   not at load, because the setting can change while the tab is open. */
-$('jump').onclick = () => anchor.scrollIntoView({block:'end',
-  behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'});
+/* ⛔ IT LANDS AT THE BOTTOM AT ONCE, AND THAT IS THE CORRECTION. It asked for a
+   SMOOTH scroll, which computes a destination and animates to it over a few
+   hundred milliseconds - and every row that arrives during the animation pushes
+   the anchor further down, so the animation finishes where the bottom USED to
+   be. Measured with the agent working: one press moved the view 2,700px and
+   still left 303px to go, with the anchor 282px below the fold and the button
+   still on screen; the content had grown 283px while the animation ran, which
+   is almost exactly the shortfall. Press again, same thing, forever. The same
+   press with the run finished landed 20px from the bottom and the button went
+   away.
+
+   An animation cannot arrive at a target that moves. Landing at once always
+   can, and from there the stylesheet keeps the view at the bottom by itself -
+   `#anchor` is the one thing in the log with `overflow-anchor:auto` - so the
+   button stops being a jump and becomes a follow. There is also no motion left
+   to reduce, which is why the reduced-motion reading that used to be here is
+   gone rather than kept. */
+$('jump').onclick = () => { log.scrollTop = log.scrollHeight; seen(); };
 

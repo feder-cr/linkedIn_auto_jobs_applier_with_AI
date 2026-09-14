@@ -236,28 +236,63 @@ def test_the_session_list_tells_a_failed_load_from_an_empty_one():
 
 
 @needs_node
-def test_jump_to_latest_respects_the_reduced_motion_setting():
-    """⛔ THE LARGEST MOTION ON THE PAGE WAS THE ONE THE REDUCED-MOTION BLOCK
-    COULD NOT REACH: a smooth scroll asked for in script is outside every CSS
-    rule. Read at click time, not at load, because the setting can change while
-    the tab is open.
+def test_jump_to_latest_lands_at_the_bottom_and_says_how_much_is_behind():
+    """⛔ AN ANIMATION CANNOT ARRIVE AT A TARGET THAT MOVES.
 
-    Known-bad: hardcode `smooth`, or read the setting once at load.
+    It asked for a SMOOTH scroll, which computes a destination and animates to
+    it over a few hundred milliseconds - and every row that arrives during the
+    animation pushes the anchor further down. Measured with the agent working:
+    one press moved the view 2,700px and still left 303px to go, the anchor
+    282px below the fold, the button still on screen; the content had grown
+    283px while the animation ran, which is almost exactly the shortfall. Press
+    again, same thing, one step behind forever. The same press with the run
+    finished landed 20px from the bottom and the button went away.
+
+    So it lands at once, and the stylesheet keeps the view at the bottom from
+    there. And it carries the count, because while a reader is scrolled up
+    every signal that the agent is alive is drawn at the BOTTOM of the
+    transcript, which is where they are not: measured on a real run, 59 steps
+    while the owner watched the first 14.
+
+    Known-bad, three: ask for a smooth scroll again; scroll to something other
+    than the full height; leave the count standing after the press.
     """
-    src = whole("$('jump').onclick =", ";" + chr(10))
+    src = (whole("function paintJump()", chr(10) + "}") + chr(10)
+           + whole("function seen()", "}" + chr(10))
+           + whole("$('jump').onclick =", ";" + chr(10)))
     harness = [
-        "let jump = null, calls = [], reduce = false;",
-        "globalThis.$ = () => ({set onclick(fn){ jump = fn; }});",
-        "globalThis.anchor = {scrollIntoView(o){ calls.push(o.behavior); }};",
-        "globalThis.matchMedia = (q) => ({matches: reduce && q.indexOf('reduce') >= 0});",
+        "let jump = null, said = [];",
+        "const btn = {hidden:false, set textContent(v){ said.push(v); },",
+        "             set onclick(fn){ jump = fn; }};",
+        "globalThis.behind = 7;",
+        "globalThis.log = {scrollTop: 300, scrollHeight: 4117};",
+        "globalThis.$ = () => btn;",
         "HERE",
-        "jump(); reduce = true; jump();",
-        "process.stdout.write(JSON.stringify(calls));",
+        "paintJump();",
+        "jump();",
+        "process.stdout.write(JSON.stringify({said, landed: log.scrollTop,",
+        "                                     behind: globalThis.behind}));",
     ]
     got = run(chr(10).join(harness).replace("HERE", src))
-    assert got == ["smooth", "auto"], (
-        "jump to latest does not follow the reduced-motion setting at the time "
-        "of the click: %r" % (got,))
+
+    assert got["said"][0] == "jump to latest - 7 new", (
+        "the one control on screen while a reader is scrolled up says nothing "
+        "about what has arrived: %r" % (got,))
+    assert got["landed"] == 4117, (
+        "the press does not land at the bottom of what is there, so rows "
+        "arriving during the move leave it short: %r" % (got,))
+    assert got["behind"] == 0 and got["said"][-1] == "jump to latest", (
+        "the count survives the press that answered it: %r" % (got,))
+
+    assert "smooth" not in whole("$('jump').onclick =", ";" + chr(10)), (
+        "the press asks for an animation again, and an animation cannot arrive "
+        "at a target that moves")
+
+    watcher = whole("new IntersectionObserver", "observe(anchor);")
+    assert "seen()" in watcher, (
+        "arriving at the bottom by scrolling does not clear the count, so the "
+        "button goes on offering to take somebody where they already are")
+
 
 
 def test_one_rule_says_a_control_cannot_be_used():
