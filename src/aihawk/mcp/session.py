@@ -17,7 +17,7 @@ from typing import Any
 
 from ..quiet import swallow
 
-from invisible_playwright.async_api import InvisiblePlaywright
+from invisible_playwright.async_api import InvisiblePlaywright, TargetClosedError
 
 
 class StealthSession:
@@ -57,13 +57,23 @@ class StealthSession:
         self._ipw = InvisiblePlaywright(**self._kwargs)
         await self._attach(await self._ipw.__aenter__())
 
-    def is_alive(self) -> bool:
-        """Whether this browser can still be handed out.
+    def is_usable(self) -> bool:
+        """Whether this object is worth handing out, asked WITHOUT talking to
+        the browser.
 
-        Two ways it cannot, and they are different: a browser that has DIED
-        under it - the object is intact, so nothing raises until a tool
-        touches the page - and one that never finished starting, which leaves
-        the context unset. Anything unexpected while asking counts as dead:
+        ⛔ AND THAT IS THE LIMIT, MEASURED, BECAUSE THE NAME IT HAD -
+        `is_alive` - PROMISED MORE THAN ANY LOCAL QUESTION CAN ANSWER. With
+        the engine ended from outside, this object goes on reporting a
+        connected browser: measured 2026-09-14 against firefox-30, the
+        process killed and `is_connected()` still true six seconds later,
+        with `page.url` answering from cache the whole time. Nothing local
+        can see a process that is gone; what sees it is the first ROUND TRIP,
+        which raises `TargetClosedError` - `page.title()` and
+        `context.new_page()` both, measured the same day.
+
+        So this catches the two failures that ARE local: a session that never
+        finished starting, which leaves the context unset, and one this
+        process closed. Anything unexpected while asking counts as unusable:
         the cost of dropping a good browser is one `browser_open`, and the
         cost of keeping a bad one is an error that names nothing.
         """
@@ -122,15 +132,28 @@ class StealthSession:
 
         Title costs a round trip per page and url does not, so a page that will
         not answer contributes what it can rather than failing the whole list -
-        a page mid-navigation must not make the others unreadable.
+        a page mid-navigation must not make the others unreadable. A closed
+        target is the exception: see below.
         """
         live = self.pages()
         out: list[dict] = []
         for page in live:
             row = {"active": page is live[-1], "url": "", "title": ""}
+            # ⛔ `page.url` IS CACHED AND `page.title()` IS A ROUND TRIP, and
+            # that is the whole difference between a row that reports and a
+            # row that pretends. A browser whose engine has been killed goes
+            # on answering its url from memory, so a description built out of
+            # urls alone reads exactly like a healthy one - measured
+            # 2026-09-14, a status answering "page: https://..." over a
+            # process that no longer existed.
             with swallow("a page that cannot say where it is answers blank"):
                 row["url"] = page.url
-            with swallow("a page that cannot say its title answers blank"):
+            # A title that will not come is ordinary - a page mid-navigation
+            # must not make the others unreadable - but a CLOSED TARGET is
+            # the browser being gone, and it goes to the caller, which is the
+            # only thing that can say so.
+            with swallow("a page mid-navigation cannot say its title",
+                         unless=(TargetClosedError,)):
                 row["title"] = await page.title()
             out.append(row)
         return out

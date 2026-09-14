@@ -23,9 +23,19 @@ log = logging.getLogger("aihawk")
 
 
 @contextmanager
-def swallow(why: str) -> Iterator[None]:
-    """Run the block and let any exception go, for this stated reason."""
+def swallow(why: str, unless: tuple = ()) -> Iterator[None]:
+    """Run the block and let any exception go, for this stated reason.
+
+    `unless` names the failures this silence is NOT for, because they mean
+    something the caller has to act on. A silence with no exceptions to it
+    is a silence that eventually hides the one failure that mattered:
+    measured 2026-09-14, a page asked for its title inside a swallow
+    answered blank whether it was mid-navigation or its whole browser was
+    gone, and the second case reached a model as a healthy answer.
+    """
     try:
         yield
+    except unless:
+        raise
     except Exception:
         log.debug("swallowed: %s", why, exc_info=True)

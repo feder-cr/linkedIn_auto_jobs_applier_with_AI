@@ -25,7 +25,7 @@ class _FakeSession:
     async def close(self):
         self.closed = True
 
-    def is_alive(self):
+    def is_usable(self):
         return not self.closed
 
 
