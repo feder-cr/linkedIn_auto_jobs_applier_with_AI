@@ -23,9 +23,14 @@ jobs:
         with:
           python-version: "3.12"
       - name: the repository is English
+        # The gate is `invisible_core.english` since core 30.23.0. It used to be
+        # a script copied here and into the wrapper, and the copies drifted: four
+        # of this one's five exclusions named paths that exist only in the
+        # wrapper. This repository declares nothing, so nothing is exempt.
         run: |
-          python scripts/check_english_only.py --selftest
-          python scripts/check_english_only.py
+          python -m pip install --upgrade pip "invisible-core>=30.23.0"
+          python -m invisible_core.english --selftest
+          python -m invisible_core.english
 
   # ⛔ PYFLAKES ONLY, AND IT IS HERE BECAUSE A NameError REACHED CI ON A GREEN
   # SUITE. `from mcp.types import ImageContent` was dropped while an import
