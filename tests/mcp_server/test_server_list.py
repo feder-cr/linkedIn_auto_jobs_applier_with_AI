@@ -64,21 +64,20 @@ async def test_every_tool_description_is_english_and_ascii():
     matters most gets its own check rather than a longer word list, which would
     be chasing cases one at a time.
     """
-    import importlib.util
-    import pathlib
     import re
+
+    from invisible_core.english import ITALIAN as italian
 
     from aihawk.mcp import server
 
-    # The word list is IMPORTED from the repository gate rather than copied.
-    # Copying it here had two costs at once: the list would drift from the one
-    # that actually guards the repository, and this file, being a page of
-    # Italian words, was itself flagged as Italian prose by that very gate.
-    gate_path = pathlib.Path(__file__).resolve().parents[2] / "scripts" / "check_english_only.py"
-    spec = importlib.util.spec_from_file_location("_english_gate", gate_path)
-    gate = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(gate)
-    italian = gate.ITALIAN
+    # The word list is IMPORTED from the gate rather than copied. Copying it
+    # here had two costs at once: the list would drift from the one that
+    # actually guards the repository, and this file, being a page of Italian
+    # words, was itself flagged as Italian prose by that very gate. The gate
+    # itself lives in invisible_core since 30.23.0 - it used to be a script
+    # copied into this repository and into the wrapper, and the two copies
+    # drifted apart, four of this one's five exclusions naming paths that only
+    # exist in the other.
 
     problems = {}
     for tool in await server.mcp.list_tools():

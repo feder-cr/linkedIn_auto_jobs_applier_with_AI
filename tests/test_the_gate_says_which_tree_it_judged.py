@@ -1,97 +1,139 @@
 """A clean bill names the tree it is about, or it is not an answer.
 
-⛔ `scripts/check_english_only.py` CAN ONLY JUDGE THE REPOSITORY IT LIVES IN, AND
-SAID NOTHING ABOUT IT. Its root comes from `__file__` and its file list from
-`git ls-files` run inside that root, so invoking this copy from another checkout
-scanned THIS one and printed `english only: clean` about a tree the caller never
-asked about.
+⛔ THE FALSE GREEN THIS FILE WAS WRITTEN FOR. The check used to be
+`scripts/check_english_only.py`, a script whose root came from `__file__` and
+whose file list came from `git ls-files` run inside that root - so invoking it
+from another checkout scanned THIS one and printed `english only: clean` about a
+tree the caller never asked about.
 
-MEASURED 2026-09-15, and the caller was this project. Run from the sibling
-package `invisible_core`, it said clean. Asked properly - the same code with its
-root pointed at that repository - it reports 29 files carrying Italian prose,
-eleven of them inside the shipped package. The sentence was believed for two
-steps before the contradiction surfaced, which is what a false green costs: not
-a wrong answer, an answer to a different question.
+Measured 2026-09-15, and the caller was this project. Run from the sibling
+package `invisible_core`, it said clean. Asked properly, it reported 29 files
+carrying Italian prose, eleven inside the shipped package. The sentence was
+believed for two steps: not a wrong answer, an answer to a different question.
 
-WHY IT WAS NEVER CAUGHT, and the part worth keeping: the gate exists TWICE, once
-here and once in the wrapper, already byte-different, and each copy judges its
-own tree. A rule enforced by a copied script reaches exactly the repositories
-somebody remembered to copy it into, and `invisible_core` was not one of them -
-it has no copy and no CI job for it. The single home for a rule that all three
-must obey is `invisible_core.hooks`, which both Python packages already run on
-every push; that consolidation is a core release and is not done here.
+⛔ AND THE REFUSAL THIS FILE USED TO ASSERT IS GONE, DELIBERATELY. The script
+grew a guard that REFUSED when the tree you stood in and the tree it would scan
+disagreed. That was a correct patch on a wrong shape. The previous version of
+this docstring named the real fix and said it was not done yet: "the single home
+for a rule that all three must obey is invisible_core, which both Python
+packages already run on every push; that consolidation is a core release and is
+not done here." It is done now, in invisible-core 30.23.0: the gate is
+`invisible_core.english`, it takes the tree as an ARGUMENT defaulting to the git
+toplevel you are standing in, and there is nothing left to disagree with. So the
+test that asserted the refusal is replaced by the one that asserts the property
+the refusal was protecting - a cross-repo run answers about the repository it
+was pointed at, and says which one that was.
 
-What IS done here is the false green. It refuses now, the way the pin gate
-already does, and names both trees; a deliberate cross-repo run says so with
-`--root`.
+That property is what still needs holding, because it is the only thing standing
+between a green and a green about somewhere else.
 """
 from __future__ import annotations
 
-import importlib.util
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
-ROOT = Path(__file__).resolve().parent.parent
-SCRIPT = ROOT / "scripts" / "check_english_only.py"
+from invisible_core import english
+
+_REPO = Path(__file__).resolve().parents[1]
 
 
-def _load():
-    spec = importlib.util.spec_from_file_location("gate_lang", SCRIPT)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+def _run(*args, cwd):
+    """The gate as a COMMAND, which is how CI and the pre-push hook reach it."""
+    return subprocess.run([sys.executable, "-m", "invisible_core.english", *args],
+                          cwd=str(cwd), capture_output=True, text=True)
 
 
-def test_from_its_own_repository_it_just_works(monkeypatch):
-    """The case that must NOT fire: CI runs it from the repository root, and a
-    refusal there would be a gate red on correct usage."""
-    monkeypatch.chdir(ROOT)
-    assert _load()._judged_root(None) == ROOT
+def test_from_its_own_repository_it_judges_that_repository():
+    """The ordinary case: no argument, and the answer is about here."""
+    r = _run(cwd=_REPO)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert str(_REPO) in r.stdout, r.stdout
 
 
-def test_from_another_repository_it_refuses_instead_of_answering(tmp_path,
-                                                                 monkeypatch):
-    """⛔ THE KNOWN-BAD, AND IT IS THE REAL ONE. Before this, the call returned
-    quietly and the scan went on to print a clean bill for the wrong tree."""
-    other = tmp_path / "somebody-elses-repo"
+def test_from_another_repository_it_answers_about_THAT_one_and_says_so(tmp_path):
+    """⛔ THE REPLACEMENT FOR THE OLD REFUSAL, and the reason it can be replaced.
+
+    The script could only ever judge where it lived, so pointing it elsewhere
+    was a mistake to catch. The module is given the tree, so pointing it
+    elsewhere is an ordinary, correct request - and the thing that keeps it
+    honest is that the answer names the tree it is about. An answer that named
+    no tree is what made the false green survive two steps.
+    """
+    other = tmp_path / "somewhere-else"
     other.mkdir()
-    subprocess.run(["git", "init", "-q", str(other)], check=True)
-    monkeypatch.chdir(other)
+    subprocess.run(["git", "init", "-q", str(other)], check=True, capture_output=True)
+    (other / "clean.py").write_text("# Plain English, nothing to find here.\n",
+                                    encoding="utf-8")
+    subprocess.run(["git", "add", "clean.py"], cwd=str(other), check=True,
+                   capture_output=True)
 
-    with pytest.raises(SystemExit) as refused:
-        _load()._judged_root(None)
-
-    said = str(refused.value)
-    assert "REFUSED" in said
-    assert str(ROOT) in said, "the refusal must name the tree it would have scanned"
-    assert "somebody-elses-repo" in said, "and the tree the caller is standing in"
-    assert "--root" in said, "and how to mean it on purpose"
-
-
-def test_an_explicit_root_is_honoured(tmp_path):
-    """A cross-repo run is legitimate - a maintainer checking a sibling - and
-    must stay possible. What changed is that it has to be said."""
-    elsewhere = tmp_path / "elsewhere"
-    elsewhere.mkdir()
-    assert _load()._judged_root(str(elsewhere)) == elsewhere.resolve()
+    r = _run("--root", str(other), cwd=_REPO)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert str(other) in r.stdout, r.stdout
+    assert str(_REPO) not in r.stdout, (
+        "it answered about the repository it lives in, not the one it was "
+        "given: " + r.stdout)
 
 
-def test_outside_any_repository_it_falls_back_rather_than_crashing(tmp_path,
-                                                                   monkeypatch):
-    """The case that must NOT fire: `git rev-parse` failing is not a reason to
-    refuse, it just means there is nothing to compare against."""
-    monkeypatch.chdir(tmp_path)
-    module = _load()
-    monkeypatch.setattr(module.subprocess, "run",
-                        lambda *a, **k: subprocess.CompletedProcess(a, 128, "", ""))
-    assert module._judged_root(None) == ROOT
+def test_a_cross_repo_run_reports_the_OTHER_tree_s_italian(tmp_path):
+    """The must-fire half of the same question: pointed at a guilty tree it
+    accuses that tree, rather than reporting its own clean state."""
+    other = tmp_path / "guilty"
+    other.mkdir()
+    subprocess.run(["git", "init", "-q", str(other)], check=True, capture_output=True)
+    (other / "guilty.py").write_text(english._ITA, encoding="utf-8")
+    subprocess.run(["git", "add", "guilty.py"], cwd=str(other), check=True,
+                   capture_output=True)
+
+    r = _run("--root", str(other), cwd=_REPO)
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "guilty.py" in r.stdout, r.stdout
 
 
-def test_the_clean_line_names_the_tree():
-    """Known-bad is going back to the bare sentence. The whole defect was a
-    green that did not say what it was about."""
-    source = SCRIPT.read_text(encoding="utf-8")
-    assert 'print("english only: clean (%s)" % ROOT)' in source, (
-        "the success line must name the repository it judged")
+def test_outside_any_repository_it_refuses_rather_than_guessing(tmp_path):
+    """With no git above it there is no tree to judge, and inventing one would
+    be the same failure in a different direction."""
+    r = _run(cwd=tmp_path)
+    assert r.returncode != 0
+    assert "--root" in (r.stdout + r.stderr), r.stdout + r.stderr
+
+
+def test_the_clean_line_names_the_tree_and_what_it_read():
+    """A green says what it checked. The bare sentence was believed about the
+    wrong repository once already; a perimeter inferred from a green is a hope,
+    so the count of files read is part of the answer."""
+    r = _run(cwd=_REPO)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "english only: clean" in r.stdout
+    assert str(_REPO) in r.stdout
+    assert "file(s) read" in r.stdout, r.stdout
+
+
+def test_this_repository_declares_no_exclusions_and_needs_none():
+    """⛔ THE DRIFT THAT CAME WITH THE COPY. This repository's script carried
+    FIVE exclusions, and four named paths that exist only in the wrapper -
+    `src/invisible_playwright/_pw/`, `_driver/`, `_juggler/injected.js`,
+    `tests/test_fork.py`. They were never true here; they arrived with the file.
+
+    A dead exclusion never makes anything red, which is exactly why nobody found
+    it. The shared gate refuses one, and this repository now declares nothing.
+    """
+    config = english.config_for(_REPO)
+    assert config.excluded == (), config.excluded
+    assert english.dead_exclusions(_REPO, config) == []
+    guilty = english.scan(_REPO, english.tracked(_REPO), config)
+    assert not guilty, (
+        "%d file(s) are not in English with nothing exempt:\n  " % len(guilty)
+        + "\n  ".join("%s: %s" % (p, ", ".join(w[:5])) for p, w in guilty))
+
+
+@pytest.mark.parametrize("name,path,text",
+                         [(n, p, t) for n, p, t, _ in english.KNOWN_BAD],
+                         ids=[n.replace(" ", "_") for n, _, _, _ in english.KNOWN_BAD])
+def test_the_gate_still_has_teeth(name, path, text):
+    """The corpus travelled with the gate, so it is still exercised from here:
+    a gate that has only ever printed clean is not a gate."""
+    assert english.inspect(path, text, english.CORPUS_CONFIG)[0], name
