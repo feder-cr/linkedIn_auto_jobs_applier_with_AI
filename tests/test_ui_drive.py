@@ -449,11 +449,24 @@ def browser():
     driver = _McpDriver(env)
     driver.start()
     try:
-        # Warmup, with a long ceiling: the first navigation is the one that
-        # launches Firefox, and every timing assertion below assumes that cost
-        # has already been paid.
-        # `browser_navigate` opens the first page itself, which since
-        # 2026-09-11 is the only way a page is opened at all.
+        # Warmup, with a long ceiling: opening the browser is what launches
+        # Firefox, and every timing assertion below assumes that cost has
+        # already been paid.
+        #
+        # ⛔ `browser_open` FIRST, AND THIS FIXTURE WENT WITHOUT IT FOR LONGER
+        # THAN ANYBODY NOTICED. The comment that stood here said "browser_navigate
+        # opens the first page itself, which is the only way a page is opened at
+        # all", and that was true when it was written: navigate opened the first
+        # PAGE. Then `browser_open` became the only tool that opens a BROWSER,
+        # and navigating into a closed one started answering "the main browser is
+        # not open. Call browser_open to open it." - an error result, so the
+        # fixture failed and all sixteen tests in this file errored at setup.
+        #
+        # Nothing went red, because every test here carries the `ui` marker and
+        # `addopts` deselects it: they are asked for by name and nobody asked.
+        # A test that is never selected does not fail, it is absent, and an
+        # absence is not something a suite summary shows - it shows "deselected".
+        driver.call("browser_open", _timeout=300.0)
         driver.goto("about:blank", timeout=300.0)
         yield driver
     finally:
