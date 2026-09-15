@@ -34,6 +34,43 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
+
+def _judged_root(argv_root: "str | None" = None) -> pathlib.Path:
+    """The repository this run is about to judge, said out loud.
+
+    ⛔ THIS SCRIPT CAN ONLY EVER JUDGE ITS OWN REPOSITORY, AND USED TO SAY
+    NOTHING ABOUT IT. `ROOT` comes from `__file__`, and the file list comes from
+    `git ls-files` run inside `ROOT` - so invoking this copy from a DIFFERENT
+    checkout scans this one and prints `english only: clean` about a tree the
+    caller never asked about. That is a false green of the worst kind: it looks
+    like an answer to the question you asked.
+
+    Measured 2026-09-15: run from `invisible_core`, this said clean while that
+    package carried Italian prose in 29 files, 11 of them in the shipped
+    package. The caller was me, and the sentence was believed for two steps.
+
+    The fix is the one this project already applies to the pin gate: REFUSE and
+    name both places, rather than quietly answering a different question. A
+    deliberate cross-repo run is still possible - `--root` says so out loud.
+    """
+    if argv_root:
+        return pathlib.Path(argv_root).resolve()
+
+    here = subprocess.run(["git", "rev-parse", "--show-toplevel"],
+                          capture_output=True, text=True)
+    if here.returncode != 0 or not here.stdout.strip():
+        return ROOT
+    working = pathlib.Path(here.stdout.strip()).resolve()
+    if working == ROOT:
+        return ROOT
+    raise SystemExit(
+        "REFUSED: this copy can only judge the repository it lives in.\n"
+        "  it would scan : %s\n"
+        "  you are in    : %s\n"
+        "Running it from elsewhere prints a clean bill for the wrong tree.\n"
+        "Pass --root %s to say you meant that, or run that repository's own copy."
+        % (ROOT, working, working))
+
 #: Italian function words that are not English words, not Python keywords and
 #: not plausible identifiers. ⛔ The list is deliberately CONSERVATIVE: every
 #: entry was checked against this repo's existing English files, which must stay
@@ -361,17 +398,24 @@ def selftest() -> int:
 
 
 def main() -> int:
+    global ROOT
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--range", dest="rev_range",
                    help="only the files a range touches, e.g. origin/main..HEAD")
+    p.add_argument("--root", help="judge this repository instead, said out loud")
     p.add_argument("--selftest", action="store_true")
     a = p.parse_args()
     if a.selftest:
         return selftest()
 
+    ROOT = _judged_root(a.root)
+
     guilty = scan(tracked(a.rev_range))
     if not guilty:
-        print("english only: clean")
+        # ⛔ A GREEN SAYS WHAT IT CHECKED. The bare sentence was believed about
+        # the wrong repository once already; naming the tree costs one line and
+        # makes that impossible to do silently.
+        print("english only: clean (%s)" % ROOT)
         return 0
     print("%d file(s) are not in English:" % len(guilty))
     for path, found in guilty:
