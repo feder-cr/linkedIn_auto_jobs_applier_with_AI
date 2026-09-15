@@ -80,12 +80,45 @@ def _declared() -> dict:
     return out
 
 
+def _optional(tree: ast.Module) -> set:
+    """Modules imported inside a `try` whose handler catches ImportError.
+
+    ⛔ AN IMPORT WRITTEN THAT WAY IS DECLARING ITSELF OPTIONAL, and demanding a
+    dependency for it would be a red gate on a correct line - which is how gates
+    teach people to work around them. The sibling package `invisible_core` has
+    exactly one: `from packaging.markers import Marker`, inside a function,
+    returning "cannot tell" when it is absent, with a docstring that says in so
+    many words that packaging is not one of its runtime dependencies. A first
+    run of this scan across the siblings accused that line, and it was the scan
+    that was wrong.
+
+    The exemption is structural, like the registration one next door: it is the
+    shape of the code that declares the intent, not a name on a list.
+    """
+    out = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Try):
+            continue
+        catches = any(
+            "ImportError" in ast.unparse(h.type) if h.type else False
+            for h in node.handlers)
+        if not catches:
+            continue
+        for inner in ast.walk(node):
+            if isinstance(inner, ast.Import):
+                out.update(a.name.split(".")[0] for a in inner.names)
+            elif isinstance(inner, ast.ImportFrom) and inner.module:
+                out.add(inner.module.split(".")[0])
+    return out
+
+
 def _imported(folder: Path) -> dict:
-    """Top-level module name -> the files that import it."""
+    """Top-level module name -> the files that import it, optional ones aside."""
     out: dict = {}
     ours = _ours()
     for path in sorted(folder.rglob("*.py")):
         tree = ast.parse(path.read_text(encoding="utf-8"))
+        optional = _optional(tree)
         for node in ast.walk(tree):
             names = []
             if isinstance(node, ast.Import):
@@ -93,9 +126,17 @@ def _imported(folder: Path) -> dict:
             elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
                 names = [node.module.split(".")[0]]
             for name in names:
-                if name in sys.stdlib_module_names or name in ours:
+                if (name in sys.stdlib_module_names or name in ours
+                        or name in optional):
                     continue
-                out.setdefault(name, set()).add(str(path.relative_to(ROOT)))
+                # Relative to the repository where it can be - the message is
+                # for somebody reading a failure - and absolute otherwise, so
+                # the known-bad cases below can hand this a temporary directory.
+                try:
+                    where = str(path.relative_to(ROOT))
+                except ValueError:
+                    where = str(path)
+                out.setdefault(name, set()).add(where)
     return out
 
 
@@ -140,6 +181,32 @@ def test_the_scan_is_looking_at_something():
     declared = _declared()
     assert len(declared["runtime"]) >= 6, (
         "only %d runtime dependencies parsed out of pyproject" % len(declared["runtime"]))
+
+
+def test_an_import_that_declares_itself_optional_is_left_alone(tmp_path):
+    """The case that must NOT fire, taken from a real line in a sibling package.
+
+    `invisible_core.pin` does this and is right to: the module is used if it is
+    there, and its absence is answered "cannot tell" rather than as a failure.
+    A gate that demanded a dependency for it would be red on correct code."""
+    module = tmp_path / "pin.py"
+    module.write_text(
+        "def evaluate(marker):\n"
+        "    try:\n"
+        "        from packaging.markers import Marker\n"
+        "    except ImportError:\n"
+        "        return None\n"
+        "    return bool(Marker(marker).evaluate())\n", encoding="utf-8")
+    assert "packaging" not in _imported(tmp_path)
+
+
+def test_an_unguarded_import_of_the_same_module_is_still_caught(tmp_path):
+    """And the other side of it, so the exemption cannot be read as "packaging
+    is fine": at module level, with nothing catching ImportError, it is a
+    dependency like any other."""
+    module = tmp_path / "pin.py"
+    module.write_text("from packaging.markers import Marker\n", encoding="utf-8")
+    assert "packaging" in _imported(tmp_path)
 
 
 def test_a_missing_declaration_is_what_it_catches():
