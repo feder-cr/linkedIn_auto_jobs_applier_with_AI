@@ -95,6 +95,41 @@ async def test_the_idle_pane_is_answered_by_a_server_that_really_refused(live):
     assert not got.content
 
 
+async def test_the_other_branch_of_the_same_comparison_is_a_503(live):
+    """⛔ THE HALF THE 204 TEST ABOVE CANNOT REACH, and until now the only half
+    still chosen by a test double rather than by the server.
+
+    `/live/frame` picks between 204 and 503 by asking whether the sentence a
+    tool raised IS the not-open one. The test above proves the yes; nothing
+    proved the no, so a comparison that answered "not open" to EVERYTHING would
+    have passed the whole suite - and that is the failure mode that matters,
+    because it turns every real breakage into a silently idle pane.
+
+    Reaching it needs an error the server raises that is NOT that sentence, and
+    with no browser running there is exactly one that costs nothing: `browser`
+    is declared `Literal["main", "support"]`, so a third value is refused by the
+    tool's own schema. The refusal comes back as an error RESULT with validation
+    text, travels the same pipe, and lands on the other side of the same
+    comparison.
+
+    No browser is started here either, which is what keeps this in the default
+    selection beside its twin.
+    """
+    client, _ = live
+    got = await asyncio.wait_for(client.get("/live/frame?b=nonsuch"), 20)
+    assert got.status_code == 503, (
+        "an error that is not the not-open sentence must reach the pane as a "
+        "reason to show, never as an idle 204. Got %s: %s"
+        % (got.status_code, got.text[:300]))
+    body = got.json()
+    assert set(body) == {"error"}, body
+    assert body["error"], "a 503 with no reason tells the pane nothing"
+    from aihawk.mcp import NOT_OPEN
+    assert NOT_OPEN % "main" not in body["error"], (
+        "this branch is supposed to be the one the not-open sentence does NOT "
+        "take: %s" % body["error"])
+
+
 async def test_the_workspace_is_answered_by_the_server_and_not_by_the_interface(live):
     """`/live/browsers` is `browser_list` on a real server, and the answer
     carries a fact the interface does not own.

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "aihawk"
-version = "0.67.0"
+version = "0.68.0"
 description = "Anti detect browser and web browsing agent: undetected, no captchas, no blocks"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -61,10 +61,27 @@ dependencies = [
     # day mcp stops needing them, the failure would otherwise land here.
     "starlette>=0.37",
     "uvicorn>=0.30",
+    # ⛔ AND THE SAME RULE HAD BEEN WRITTEN TWICE ABOVE AND NOT APPLIED HERE.
+    # `mcp/server.py` says `from pydantic import Field` to build the tool
+    # parameter types, and nothing declared pydantic: it arrived through `mcp`,
+    # which requires >=2.11,<3. So the day mcp stops needing it, or moves to a
+    # major this cannot use, `import aihawk` fails for everybody with a
+    # traceback naming pydantic and a cause nowhere near it - and no test could
+    # see it first, because every environment that has mcp has pydantic.
+    #
+    # >=2 and no ceiling: `Field` is what is used, it has been in v2 since the
+    # first release, and a tighter pin here would fight mcp's without adding
+    # anything true. `tests/test_what_is_imported_is_declared.py` now holds the
+    # rule for the whole package, because this file knew it in two places and
+    # missed the third anyway.
+    "pydantic>=2",
 ]
 
 [project.optional-dependencies]
-test = ["pytest>=8", "pytest-asyncio>=0.23"]
+# httpx is declared for the same reason as pydantic above: the test that drives
+# a REAL server through the routes uses `httpx.ASGITransport` to reach the app
+# inside the test's own event loop, and it was arriving through mcp.
+test = ["pytest>=8", "pytest-asyncio>=0.23", "httpx>=0.27"]
 
 # ⛔ NARROW ON PURPOSE, AND IT IS HERE SO THE CI JOB AND A DEVELOPER RUN THE
 # SAME THING. `F` is pyflakes: a name that is not defined, an import nobody
