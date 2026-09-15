@@ -31,6 +31,24 @@ def _seed_of(profile):
     return json.loads((profile / identity.IDENTITY_FILE).read_text(encoding="utf-8"))["seed"]
 
 
+def told(plan_):
+    """What a caller is told about a session planned and launched unchanged.
+
+    ⛔ THIS WAS `SessionPlan.describe()`, A METHOD IN THE PRODUCT WHOSE SIX
+    CALLERS WERE ALL IN THIS FILE. It is spelled out here, in the suite, because
+    the product already has a place that maps a plan onto the sentence -
+    `work.open` - and a second one on the class could drift from it.
+
+    The four arguments are the ones `work.open` passes on the planned path. It
+    can also pass others: a helper browser is launched with `main`'s exit
+    written over the plan's, and a browser brought back from a saved session has
+    no plan at all. That is why the sentence is read from what was LAUNCHED, and
+    why the plan cannot be asked to describe itself.
+    """
+    return plan.describe(plan_.kwargs, seed_from=plan_.seed_from,
+                         exit_note=plan_.exit, warnings=plan_.warnings)
+
+
 # -- the environment profile, which is where the tell lived ------------------
 
 def test_a_profile_from_the_environment_keeps_its_seed(tmp_path):
@@ -52,8 +70,8 @@ def test_the_answer_describes_the_browser_that_started(tmp_path):
     plan_ = plan.plan_session(env={"STEALTHFOX_PROFILE_DIR": str(directory)})
 
     assert plan_.kwargs["profile_dir"] == str(directory.resolve())
-    assert "none, so nothing survives" not in plan_.describe()
-    assert str(directory.resolve()) in plan_.describe()
+    assert "none, so nothing survives" not in told(plan_)
+    assert str(directory.resolve()) in told(plan_)
 
 
 def test_describe_reads_the_kwargs_not_the_arguments():
@@ -176,7 +194,7 @@ def test_a_relative_profile_is_reported_as_an_absolute_path(tmp_path, monkeypatc
     result = plan.plan_session(profile="acct-a", env={})
 
     assert result.profile == str((tmp_path / "acct-a").resolve())
-    assert result.profile in result.describe()
+    assert result.profile in told(result)
 
 
 def test_the_word_none_is_refused_rather_than_created(tmp_path, monkeypatch):
@@ -214,7 +232,7 @@ def test_a_profile_returning_through_another_exit_is_warned_about(tmp_path):
 
     assert second.warnings, "the exit changed under a profile and nothing said so"
     assert "exit-a.invalid" in second.warnings[0] and "exit-b.invalid" in second.warnings[0]
-    assert "warning:" in second.describe()
+    assert "warning:" in told(second)
 
 
 def test_the_same_exit_is_not_warned_about(tmp_path):
@@ -311,12 +329,12 @@ def test_the_exit_is_reported_as_a_value(tmp_path):
     result = plan.plan_session(env=env)
 
     assert result.exit == "socks5://exit-a.invalid:1080"
-    assert "STEALTHFOX_PROXY" not in result.describe()
+    assert "STEALTHFOX_PROXY" not in told(result)
 
 
 def test_a_proxy_password_is_never_in_the_answer():
     result = plan.plan_session(proxy="socks5://user:hunter2@exit-a.invalid:1080", env={})
-    assert "hunter2" not in result.describe()
+    assert "hunter2" not in told(result)
 
 
 def test_a_bare_session_carries_no_settings_at_all():

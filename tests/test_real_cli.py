@@ -19,19 +19,24 @@ pytestmark = pytest.mark.skipif(
 
 
 async def test_the_loop_reads_a_data_url_heading():
-    from aihawk.agent import run_task
+    from aihawk.agent import Conversation
     from aihawk.link import Link
     from aihawk.llm import make_client, resolve_model
 
     key = os.environ["OPENROUTER_API_KEY"]
     link = await Link({"binary": os.environ["STEALTHFOX_BINARY"]}, key=key).open()
     try:
-        answer = await run_task(
-            link.session,
+        # The canonical path, which is the one the product takes: the
+        # conversation is handed `link.call` and `link.tools`. This used to
+        # reach PAST the Link for `link.session` and drive the raw MCP
+        # session shape through `agent.run_task`, so the one end-to-end
+        # test of the loop exercised an entry point the product does not
+        # have - and the wrapper it exists to go through was stepped over.
+        convo = Conversation(make_client(key), resolve_model(None, os.environ))
+        answer = await convo.run(
             "Open data:text/html,<h1>hello-cli</h1> and tell me the exact text "
             "of the h1.",
-            client=make_client(key),
-            model=resolve_model(None, os.environ),
+            link.call, link.tools, instructions=link.instructions,
         )
     finally:
         await link.close()

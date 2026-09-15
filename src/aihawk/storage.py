@@ -71,6 +71,27 @@ def safe_name(session_id: str) -> str:
     return cleaned[:120] or "_"
 
 
+def file_for(kind: str, session_id: str) -> Path:
+    """Where one half of a session lives: `<home>/<kind>/<safe id>.json`.
+
+    ⛔ THE LAST PIECE OF THIS RULE WAS STILL WRITTEN TWICE. This module's own
+    docstring says `home()` and the id sanitiser were pulled out of the server's
+    package because the interface was reaching in to borrow them, and that
+    reading, writing and erasing followed. The SHAPE did not: `chats.chat_path`
+    and `store.path_of` each kept their own copy of "join the home, the
+    directory and the id, and put .json on the end".
+
+    Two copies of one rule is the arrangement this file exists to end, and the
+    cost was visible from outside it: `Sessions.knows` has to ask whether a
+    session exists on disk, and had to call two differently-named functions to
+    ask one question about one id.
+
+    `kind` is the directory, which is the only thing the two halves do not
+    share - `chats` for the conversation, `sessions` for the browsers.
+    """
+    return home() / kind / ("%s.json" % safe_name(session_id))
+
+
 def write_atomically(where: Path, blob: bytes) -> None:
     """Replace a file with these bytes, or leave the old one untouched.
 

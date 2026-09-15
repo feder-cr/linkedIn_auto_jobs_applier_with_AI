@@ -16,13 +16,13 @@ So there is one invariant, and everything else is negotiable:
 
     NO INTERACTIVE ELEMENT IS EVER REMOVED.
 
-The relevance score below orders and annotates. It never deletes. That rule is
-not stylistic - it was learned three times in one day on the sibling snapshot
-code: a character cap returned zero usable elements above the limit, a
-signature dedup removed 8.1% of the clickable elements to save 13% of the
-weight, and both looked reasonable when written. What shrinks the payload here
-is per-FIELD trimming (attribute whitelists, truncated data URIs, dropped class
-soup), which measured -7% on the snapshot at exactly zero element loss.
+Nothing here ranks elements, and nothing may drop one. That rule is not
+stylistic - it was learned three times in one day on the sibling snapshot code:
+a character cap returned zero usable elements above the limit, a signature dedup
+removed 8.1% of the clickable elements to save 13% of the weight, and both
+looked reasonable when written. What shrinks the payload here is per-FIELD
+trimming (attribute whitelists, truncated data URIs, dropped class soup), which
+measured -7% on the snapshot at exactly zero element loss.
 """
 from __future__ import annotations
 
@@ -40,7 +40,7 @@ from selectolax.lexbor import LexborHTMLParser, LexborNode
 # and lexbor implements the spec HTML5 parsing algorithm - the same one a
 # browser runs, on the same malformed markup.
 
-__all__ = ["clean_page", "clean_stats", "CleanError", "VISIBLE_HTML_JS"]
+__all__ = ["clean_page", "CleanError", "VISIBLE_HTML_JS"]
 
 
 class CleanError(RuntimeError):
@@ -211,12 +211,12 @@ MAX_HREF = 220
 # truncating says "these are the choices", and only one of those is true.
 MAX_OPTIONS = 25
 
-BLOCK_TAGS = frozenset({
-    "p", "div", "section", "article", "header", "footer", "main", "aside", "nav",
-    "h1", "h2", "h3", "h4", "h5", "h6", "li", "tr", "td", "th", "br", "hr",
-    "blockquote", "pre", "form", "fieldset", "table", "ul", "ol", "dl", "dt", "dd",
-})
-
+# ⛔ `BLOCK_TAGS` STOOD HERE AND NOTHING READ IT. Thirty tag names kept for a
+# phase that is gone: `_to_text` puts the line breaks in with selectolax's own
+# separator, and `_shorten_prose` - the one caller that ever wanted to know
+# which tags are blocks - was removed rather than repaired, because it marked
+# every long block with the number of characters it had "cut" and cut nothing.
+# A constant nobody reads is a claim about the code that the code does not make.
 _WS = re.compile(r"[ \t\x0b\f\r]+")
 _BLANKS = re.compile(r"\n\s*\n\s*\n+")
 
@@ -274,63 +274,23 @@ def is_interactive(node: LexborNode) -> bool:
     return False
 
 
-def relevance(node: LexborNode) -> int:
-    """How much a model is likely to need this element.
-
-    Used to ORDER and to decide how much surrounding text to keep. Never to
-    delete: see the invariant at the top of the module.
-
-    The signs here are worth reading against the version this replaces, where
-    they ran the other way. A submit button scored -10 and a cookie banner -15,
-    which inverts what an agent actually needs: the submit button is the one
-    that finishes the task, and the cookie banner is the modal standing between
-    the agent and the whole page. Measured on the sibling snapshot code, missing
-    the element that blocks the viewport is not a local failure, it is a
-    terminal one - the agent cannot see why nothing it clicks responds.
-    """
-    score = 0
-    tag = node.tag
-    if tag in ("input", "select", "textarea"):
-        score += 15
-    elif tag == "button":
-        score += 12
-    elif tag == "a":
-        score += 8
-    elif tag == "label":
-        score += 6
-    elif tag in ("form", "fieldset", "legend"):
-        score += 10
-
-    if _attr(node, "name"):
-        score += 8
-    if _attr(node, "id"):
-        score += 4
-    if _attr(node, "placeholder") or _attr(node, "aria-label") or _attr(node, "title"):
-        score += 5
-    if _has(node, "required") or _attr(node, "aria-required") == "true":
-        score += 8
-
-    text = (node.text(deep=True) or "").strip().lower()
-    label = (_attr(node, "aria-label") + " " + _attr(node, "value") + " " + text).lower()
-
-    # The button that finishes the job. Positive, and by a wide margin.
-    if re.search(r"\b(submit|send|continue|next|save|upload|apply|confirm|pay|"
-                 r"checkout|search|sign in|log in|accept|agree|invia|continua|"
-                 r"salva|cerca|accetta|avanti)\b", label):
-        score += 20
-
-    # An error message is the single most informative thing on a form that just
-    # rejected something, and it is what tells the agent what to change.
-    if (_attr(node, "aria-invalid") == "true"
-            or _attr(node, "role") in ("alert", "alertdialog", "status")
-            or re.search(r"error|invalid|required", _attr(node, "class"), re.I)):
-        score += 50
-
-    # A blocking overlay outranks the page behind it: until it is dismissed,
-    # nothing else on the page can be reached at all.
-    if re.search(r"\b(cookie|consent|gdpr|dismiss|close|accetta|chiudi)\b", label):
-        score += 15
-    return score
+# ⛔ `relevance(node)` STOOD HERE: FIFTY-SEVEN LINES SCORING HOW MUCH A MODEL
+# NEEDS AN ELEMENT, AND NOTHING HAS EVER CALLED IT. Not this module, not the
+# rest of the package, not a test, and it was not in `__all__` either. It
+# arrived already dead with the server on 2026-09-06 and no commit since has
+# named it.
+#
+# It was worse than unused: the module docstring ABOVE described it as part of
+# how this file works - "the relevance score below orders and annotates" - so
+# the file's own account of itself named a pass that does not run. A reader
+# looking for where elements get ordered found a scoring function, read it, and
+# learned nothing true about the output. That sentence is corrected up there;
+# what it was really carrying - why nothing is ever deleted - is kept, because
+# that was measured and this was not.
+#
+# Nothing ordered or annotated anything, so nothing changes by its going. If
+# ordering is wanted one day it is a new decision with its own measurement, not
+# a function to re-enable: the numbers in it were never run against a page.
 
 
 # --- phase 1: noise --------------------------------------------------------
@@ -662,24 +622,17 @@ def clean_page(html: str, mode: str = "form") -> str:
     return _BLANKS.sub("\n\n", out).strip()
 
 
-def clean_stats(before: str, after: str) -> Dict[str, float]:
-    """What the cleaning cost and what it saved.
-
-    `tokens_*` are ESTIMATES at four characters each, and the estimate is worst
-    exactly where it is used - JSON and long URLs tokenize far denser than prose.
-    Reported as an order of magnitude, not a number to plan against.
-
-    And a reduction figure alone says nothing about whether the result is still
-    usable: pair it with how many elements survived, measured on the same page.
-    The most attractive -13% of the day cost 8.1% of the clickable elements.
-    """
-    a, b = len(before), len(after)
-    return {
-        "chars_before": a,
-        "chars_after": b,
-        "chars_removed": a - b,
-        "reduction_pct": round(100.0 * (a - b) / a, 1) if a else 0.0,
-        "tokens_before_est": a // 4,
-        "tokens_after_est": b // 4,
-        "tokens_saved_est": (a - b) // 4,
-    }
+# ⛔ `clean_stats(before, after)` STOOD HERE AND WAS EXPORTED, AND NOTHING EVER
+# ASKED IT ANYTHING. Seven figures about what the cleaning saved, with one test
+# checking the arithmetic and no caller anywhere: not this package, not the
+# interface, not the workbench. It came in with the server on 2026-09-06 and was
+# dead on arrival, the same as `relevance` above.
+#
+# Its docstring was the honest part and it is why this marker is longer than a
+# deletion needs to be: `tokens_*` were ESTIMATES at four characters each,
+# worst exactly where they were used, and the warning that a reduction figure
+# says nothing about whether the result is still usable - the most attractive
+# -13% of that day cost 8.1% of the clickable elements. That lesson is not lost
+# with the function: it is the invariant at the top of this module, which is
+# where it belongs, because an invariant holds whether or not somebody computes
+# a percentage.

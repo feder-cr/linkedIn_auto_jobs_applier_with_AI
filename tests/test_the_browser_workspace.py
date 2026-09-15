@@ -103,19 +103,18 @@ class Brain:
 def _app():
     """One conversation, its own `FakeLink`, and the app built around it.
 
-    `sessions._open_link` is the test seam `Sessions` exposes for exactly
-    this: a conversation's connection without a real subprocess behind it.
-    Every test here drives one conversation, so the same link answers
-    whichever id is asked for.
+    `open_link=` is the seam `Sessions` declares for exactly this: a
+    conversation's connection without a real subprocess behind it. Every
+    test here drives one conversation, so the same link answers whichever
+    id is asked for.
     """
     from starlette.testclient import TestClient
     link = FakeLink()
-    sessions = Sessions({}, None, Brain)
 
-    async def _open_link(session_id):
+    async def open_link(session_id):
         return link
 
-    sessions._open_link = _open_link
+    sessions = Sessions({}, None, Brain, open_link=open_link)
     return link, sessions, TestClient(build_app(sessions))
 
 

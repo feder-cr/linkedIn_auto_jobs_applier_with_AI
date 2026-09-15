@@ -90,9 +90,20 @@ class SessionPlan:
     profile: Optional[str]
     warnings: tuple = field(default=())
 
-    def describe(self) -> str:
-        return describe(self.kwargs, seed_from=self.seed_from,
-                        exit_note=self.exit, warnings=self.warnings)
+    # ⛔ `describe(self)` STOOD HERE AND WAS A SECOND MAPPING OF THIS OBJECT
+    # ONTO THE SENTENCE. It forwarded all four fields to the function above, and
+    # so did `work.open`, which is the only place the product ever says this out
+    # loud - two copies of "which field is which parameter", free to disagree the
+    # day a fifth field joins the sentence.
+    #
+    # It also described something that does not happen. A plan does not reach
+    # the caller unchanged: between planning and launching, `work.open` can
+    # rewrite the settings and the exit note, which is how the helper browser
+    # comes to share `main`'s exit. The sentence a caller is told is read from
+    # what was LAUNCHED, never from what was planned - the whole point of the
+    # module function - and a method on the plan quietly offered the other
+    # thing. Its six callers were all in one test file, and they now go through
+    # the function the product goes through.
 
 
 def _asked(explicit: Optional[str], env: Mapping[str, str], name: str) -> str:

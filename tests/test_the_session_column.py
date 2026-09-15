@@ -98,8 +98,8 @@ def _sessions(make_brain=Quiet, model_label="a model"):
         links[session_id] = fake
         return fake
 
-    sessions = Sessions({}, None, make_brain, model_label=model_label)
-    sessions._open_link = open_link
+    sessions = Sessions({}, None, make_brain, model_label=model_label,
+                        open_link=open_link)
     return links, sessions
 
 
