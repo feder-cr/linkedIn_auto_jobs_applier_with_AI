@@ -25,8 +25,6 @@ import json
 import pathlib
 import re
 
-import pytest
-
 from aihawk.mcp.work import Work
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -74,7 +72,6 @@ def samples():
     return out
 
 
-@pytest.mark.asyncio
 async def test_every_published_sample_names_fields_the_server_has(tmp_path, monkeypatch):
     """Known-bad, and it is the defect that happened: put `running: false`
     back into a row of the sample, or `limit` back beside `focus`."""
@@ -100,7 +97,6 @@ async def test_every_published_sample_names_fields_the_server_has(tmp_path, monk
                 "row is %r)" % (where, sorted(set(one) - row), sorted(row)))
 
 
-@pytest.mark.asyncio
 async def test_a_sample_of_a_server_that_has_just_started_shows_nothing_open(tmp_path, monkeypatch):
     """⛔ THE OTHER HALF OF WHAT WENT STALE, and the keys alone cannot see it:
     the old sample's fields were all real in their day, and what made it wrong

@@ -1,4 +1,3 @@
-import pytest
 from aihawk.agent import _result_text, mcp_tools_to_openai
 from _loop import run_task
 
@@ -80,7 +79,6 @@ def test_mcp_tools_to_openai_shape():
     assert defs[0]["function"]["name"] == "browser_navigate"
 
 
-@pytest.mark.asyncio
 async def test_run_task_drives_tools_then_returns_final_answer():
     mcp, client = _FakeMCP(), _FakeClient()
     out = await run_task(mcp, "read the page", client=client, model="x")

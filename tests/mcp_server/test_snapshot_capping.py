@@ -93,7 +93,6 @@ class _FakeSession:
                 "interactive_elements": elements(self._n)}
 
 
-@pytest.mark.asyncio
 async def test_snapshot_really_uses_the_element_cut():
     """The wiring, not the piece.
 
@@ -109,7 +108,6 @@ async def test_snapshot_really_uses_the_element_cut():
     assert d["omitted_elements"] > 0
 
 
-@pytest.mark.asyncio
 async def test_by_default_there_is_no_cap():
     """A cap is a guess about what the caller needs, made without knowing what it
     is looking for, and a form's submit button is exactly the sort of thing that
@@ -120,7 +118,6 @@ async def test_by_default_there_is_no_cap():
     assert "omitted_elements" not in d
 
 
-@pytest.mark.asyncio
 async def test_an_explicit_cap_is_still_honoured():
     """Whoever asks for one gets it, and gets usable elements, not an envelope."""
     d = json.loads(await actions.snapshot(_FakeSession(400), max_chars=4000))

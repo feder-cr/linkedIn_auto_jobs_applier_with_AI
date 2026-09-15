@@ -32,8 +32,6 @@ import pytest
 
 from aihawk.mcp import actions
 
-pytestmark = pytest.mark.asyncio
-
 
 class _Response:
     def __init__(self, url, status):

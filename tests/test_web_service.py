@@ -28,8 +28,6 @@ from aihawk.routes import build_app
 from aihawk.ui import PAGE
 from _sessions import around
 
-pytestmark = pytest.mark.asyncio
-
 
 class FakeLink:
     """Shaped like `Link` where ChatService and the routes touch it."""

@@ -3,11 +3,7 @@ and which page a command drives, for every live page, with a page that will not
 answer contributing what it can."""
 from __future__ import annotations
 
-import pytest
-
 from aihawk.mcp.session import StealthSession
-
-pytestmark = pytest.mark.asyncio
 
 
 class _Page:

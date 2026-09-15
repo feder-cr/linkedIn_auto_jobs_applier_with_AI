@@ -10,8 +10,6 @@ live view.
 So these tests assert the absence of a behaviour. They fail against any version
 that cleans up here, including the one this replaced.
 """
-import pytest
-
 
 class _FakeSession:
     def __init__(self, **kwargs):
@@ -29,7 +27,6 @@ class _FakeSession:
         return not self.closed
 
 
-@pytest.mark.asyncio
 async def test_a_client_leaving_does_not_close_its_browser():
     from aihawk.mcp import server
 
@@ -45,7 +42,6 @@ async def test_a_client_leaving_does_not_close_its_browser():
     await server.work.close_all()
 
 
-@pytest.mark.asyncio
 async def test_several_clients_coming_and_going_leave_every_session_alone():
     from aihawk.mcp import server
 
@@ -63,7 +59,6 @@ async def test_several_clients_coming_and_going_leave_every_session_alone():
     await server.work.close_all()
 
 
-@pytest.mark.asyncio
 async def test_close_all_is_what_actually_shuts_them_down():
     """The cleanup did not disappear, it moved. It runs when the PROCESS ends,
     which on stdio is the same moment a client leaves, so nothing changes for

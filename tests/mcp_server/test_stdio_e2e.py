@@ -8,7 +8,6 @@ from aihawk.mcp import __version__ as aihawk_version
 from _stdio_helpers import server_params
 
 
-@pytest.mark.asyncio
 async def test_stdio_lists_tools():
     async with stdio_client(server_params()) as (read, write):
         async with ClientSession(read, write) as mcp:
@@ -17,7 +16,6 @@ async def test_stdio_lists_tools():
             assert {"browser_navigate", "browser_take_screenshot"} <= names
 
 
-@pytest.mark.asyncio
 async def test_the_handshake_says_which_aihawk_this_is():
     """⛔ THE VERSION ON THE WIRE IS OURS, NOT THE SDK'S.
 
@@ -48,7 +46,6 @@ async def test_the_handshake_says_which_aihawk_this_is():
                 "nobody sets its own." % info.version)
 
 
-@pytest.mark.asyncio
 async def test_a_refused_open_reaches_the_client_as_an_error():
     """⛔ A REFUSAL RETURNED AS A SUCCESSFUL RESULT IS A LIE THE PROTOCOL TELLS.
 
@@ -74,7 +71,6 @@ async def test_a_refused_open_reaches_the_client_as_an_error():
     assert "refused" in said, said
 
 
-@pytest.mark.asyncio
 async def test_every_tool_reaches_the_wire_with_its_hints():
     """⛔ WHAT IS REGISTERED IS NOT NECESSARILY WHAT GOES OUT.
 
@@ -127,7 +123,6 @@ async def _open_main(session_id):
             await mcp.call_tool("browser_open", {"seed": 4242})
 
 
-@pytest.mark.asyncio
 # ⛔ AND `e2e`, BECAUSE `browser_open` STARTS A REAL ENGINE. That is what the
 # marker means, and this test was missing it: measured 2026-09-11, the two
 # servers below downloaded and extracted 665 MB of Firefox and launched it,

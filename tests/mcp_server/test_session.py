@@ -52,7 +52,6 @@ class _FakePersistentContext:
         self.pages = []
 
 
-@pytest.mark.asyncio
 async def test_the_page_a_command_drives_is_the_newest_live_one():
     """Newest, because a site that opens a page of its own has moved the
     person's attention there; live, because a page the site closed must not
@@ -69,7 +68,6 @@ async def test_the_page_a_command_drives_is_the_newest_live_one():
     assert s.page() is a
 
 
-@pytest.mark.asyncio
 async def test_page_without_any_open_raises():
     s = StealthSession()
     s._context = _FakeContext()
@@ -78,7 +76,6 @@ async def test_page_without_any_open_raises():
     assert s.pages() == []
 
 
-@pytest.mark.asyncio
 async def test_a_page_the_site_opened_is_seen_without_being_registered():
     s = StealthSession()
     s._context = _FakeContext()
@@ -95,7 +92,6 @@ async def test_a_page_the_site_opened_is_seen_without_being_registered():
         "about:blank", "https://popup.test/"]
 
 
-@pytest.mark.asyncio
 async def test_attach_ephemeral_browser_calls_new_context():
     s = StealthSession()
     fake_browser = _FakeBrowser()
@@ -104,7 +100,6 @@ async def test_attach_ephemeral_browser_calls_new_context():
     assert s._context is fake_browser.context_returned
 
 
-@pytest.mark.asyncio
 async def test_attach_persistent_context_used_directly():
     s = StealthSession()
     fake_persistent = _FakePersistentContext()
@@ -114,7 +109,6 @@ async def test_attach_persistent_context_used_directly():
     assert s._browser is None
 
 
-@pytest.mark.asyncio
 async def test_usable_means_started_and_not_closed_here():
     """The two failures a LOCAL question can see: a session that never
     finished starting has no context, and one closed here has none either.
