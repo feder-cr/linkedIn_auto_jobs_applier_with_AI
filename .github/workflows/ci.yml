@@ -101,6 +101,24 @@ jobs:
   # runner's cache on first use, and drive it through the tools. Deselected by
   # default because of the download and the time; this job runs them the way
   # the server's own CI did before the merge, on one platform.
+  #
+  # ⛔ AND IT NOW RUNS `-m ui` TOO, BECAUSE NOBODY RAN THEM AND THEY HAD ROTTED.
+  # `addopts` deselects both `ui` and `e2e`, and this job asked only for `e2e`
+  # in `tests/mcp_server` - so the sixteen tests in `tests/test_ui_drive.py`,
+  # which drive a real browser through a real server, were selected by no run
+  # anywhere. Measured 2026-09-15: all sixteen ERRORED at fixture setup and had
+  # for some time. The fixture navigated into a browser it had never opened,
+  # which the product stopped allowing when `browser_open` became the only tool
+  # that opens one, and the comment beside it still described the older world.
+  #
+  # Nothing could go red. A deselected test does not fail: it is absent, and a
+  # summary reports "deselected", which reads like a choice rather than a gap.
+  # Same shape as a workflow whose trigger never fires.
+  #
+  # It costs about half a minute and no extra download - the engine is already
+  # fetched two lines below for the same reason - and it runs AFTER the e2e
+  # selection because these must run serially: two browsers driving at once
+  # give false results.
   e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -117,6 +135,8 @@ jobs:
           # through a real engine skip unless the engine is named to them.
           export STEALTHFOX_BINARY="$(invisible-playwright fetch | tail -n 1)"
           python -m pytest -q -m e2e tests/mcp_server
+          # Serially, and in this order: both selections drive real browsers.
+          python -m pytest -q -m ui
 
   # This package is published, so the thing that must work is the WHEEL, not the
   # checkout. An editable install can pass every test while the built artifact is

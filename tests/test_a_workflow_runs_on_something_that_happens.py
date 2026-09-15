@@ -108,6 +108,51 @@ def test_the_wiki_follows_the_documents_it_mirrors():
             "match and the trigger is decorative" % pattern)
 
 
+def test_every_selection_the_suite_hides_is_one_some_workflow_asks_for():
+    """A marker that `addopts` deselects, and that no job names, is unreachable.
+
+    ⛔ THE SIXTEEN `ui` TESTS WERE EXACTLY THAT. `addopts` is
+    `-m 'not ui and not e2e'`, and the only job that asked for anything asked
+    for `-m e2e tests/mcp_server`. So `tests/test_ui_drive.py` - sixteen tests
+    that drive a real browser through a real server - was selected by no run
+    anywhere, and all sixteen had rotted into an error at fixture setup without
+    a single red anywhere.
+
+    A deselected test does not fail. It is absent, and a summary calls that
+    "deselected", which reads like a decision rather than a gap. This is the
+    same shape as the trigger that never fires, one file over: something is
+    declared, and nothing executes it.
+
+    Known-bad is removing `-m ui` from the e2e job, or adding a third marker to
+    `addopts` and no job to run it.
+    """
+    pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    # `[a-z_0-9]+` and not `[a-z_]+`: the first version stopped at the digit in
+    # `e2e` and reported a marker called `e`, which is the gate accusing a name
+    # that does not exist.
+    hidden = set(re.findall(r"not\s+([a-z_0-9]+)",
+                            re.search(r'addopts\s*=\s*"([^"]*)"',
+                                      pyproject).group(1)))
+    assert hidden, "no marker is deselected; this gate has nothing to guard"
+
+    # ⛔ COMMENTS STRIPPED, AND THIS GATE FELL FOR THEM ON ITS FIRST KNOWN-BAD.
+    # The first version searched the raw YAML, and the comment written beside
+    # the job - the one explaining that it now runs the ui selection - satisfied
+    # the search on its own. Removing the command left the sentence about it,
+    # and the gate stayed green. It is the most repeated defect in this project,
+    # met inside the gate written to find things that never run.
+    asked = " ".join(
+        "\n".join(line for line in text.splitlines()
+                  if not line.lstrip().startswith("#"))
+        for text in _workflows().values())
+    orphaned = sorted(m for m in hidden
+                      if not re.search(r"-m\s+'?%s\b" % re.escape(m), asked))
+    assert not orphaned, (
+        "%d marker(s) deselected by addopts that no workflow ever asks for: "
+        "%s\nTests behind them are run by nobody and rot without going red."
+        % (len(orphaned), ", ".join(orphaned)))
+
+
 def test_the_reader_is_looking_at_the_real_block():
     """⛔ A GREEN SAYS WHAT IT CHECKED. If `_triggers` stopped matching - an
     `on:` written inline, a file reformatted - every workflow would come back
