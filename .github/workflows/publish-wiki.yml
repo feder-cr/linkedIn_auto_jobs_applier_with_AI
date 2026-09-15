@@ -7,10 +7,29 @@
 # links to the wiki's extensionless form, names each page by its slug (index.md
 # becomes Home.md), and regenerates _Sidebar.md from the parent/nav_order tree.
 #
-# It runs on a published release (the docs the release ships are what the wiki
-# should show) and on manual dispatch. The wiki checkout is wiped and rebuilt
-# each run so a page deleted from docs/ also disappears from the wiki; nothing
-# but generated output is ever committed.
+# ⛔ IT RAN ON `release: published` FOR SIXTY-THREE RUNS AND THAT TRIGGER NEVER
+# FIRED ONCE. Every one of those runs was a manual dispatch. The reason is a
+# GitHub rule, not a mistake in the condition: an event created with the
+# built-in GITHUB_TOKEN does not start another workflow, and the release here is
+# created by `publish.yml`, which is why its author is github-actions[bot]. So
+# the sentence this comment used to open with - "it runs on a published release"
+# - was false from the day it was written, and nothing anywhere went red.
+#
+# Measured 2026-09-15: the wiki was last built from ae33811 on 2026-09-13, and
+# by then eight releases and 16 changed pages had gone by (81 insertions, 68
+# deletions), including the published character and token figures that 0.64.0
+# and 0.65.0 moved. The wiki was showing the previous month's numbers to anybody
+# reading it, and the only thing keeping it anywhere near current was somebody
+# remembering to press the button.
+#
+# So it runs on a PUSH to main that touches what the wiki is made of - the docs
+# themselves and the converter - which is the real cause and an event that
+# actually happens. The release trigger stays because it costs nothing and would
+# work for a release published by a person; it is no longer what this depends
+# on. Manual dispatch stays for a rebuild on demand.
+#
+# The wiki checkout is wiped and rebuilt each run so a page deleted from docs/
+# also disappears from the wiki; nothing but generated output is ever committed.
 #
 # AUTH. Pushing to <repo>.wiki.git needs contents:write. The built-in
 # GITHUB_TOKEN carries it here; if a run ever gets a 403 pushing the wiki
@@ -20,6 +39,13 @@
 name: publish-wiki
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "scripts/build_wiki.py"
+      - "scripts/sync_article_pixels.py"
+      - ".github/workflows/publish-wiki.yml"
   release:
     types: [published]
   workflow_dispatch: {}
