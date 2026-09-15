@@ -50,40 +50,43 @@ class Sessions:
     """
 
     def __init__(self, opts: Mapping[str, Any], key: Optional[str], make_brain,
-                model_label: str = "no model") -> None:
+                model_label: str = "no model", *, open_link=None) -> None:
         self._opts = dict(opts)
         self._key = key
         self._make_brain = make_brain
         self.model_label = model_label
         self._live: Dict[str, ChatService] = {}
-        # ⛔ A SEAM FOR TESTS, NOT A SECOND WAY TO PRODUCE A CONNECTION IN THE
-        # PRODUCT. Real code never reassigns this: `get` always spawns
-        # `Link(dict(opts, session_id=at), key=key).open()`. A test that wants
-        # many conversations without many real processes sets this to a
-        # function of its own, so what is under test is `Sessions` deciding
-        # WHICH conversation gets WHICH connection - never `Link` itself,
-        # which has its own tests, and never a real subprocess, which
-        # `tests/mcp_server/test_stdio_e2e.py` is where that gets proven.
-        self._open_link = self._spawn_link
+        # ⛔ HOW A CONNECTION IS MADE, AS A PARAMETER RATHER THAN AS AN
+        # ATTRIBUTE TO OVERWRITE. It was `self._open_link = self._spawn_link`,
+        # reassigned from outside by two test modules - a seam that worked and
+        # that nothing declared: a reader of the signature could not see it,
+        # and a reader of the assignment could not tell a convention from an
+        # accident. Passed in, it is part of the interface and the default is
+        # the product's one and only way.
+        #
+        # What it is for is unchanged: a test that wants many conversations
+        # without many real processes supplies its own, so what is under test
+        # is `Sessions` deciding WHICH conversation gets WHICH connection -
+        # never `Link` itself, which has its own tests, and never a real
+        # subprocess, which `tests/mcp_server/test_stdio_e2e.py` proves.
+        self._open_link = open_link or self._spawn_link
 
     async def _spawn_link(self, session_id: str) -> Link:
         return await Link(dict(self._opts, session_id=session_id),
                           key=self._key).open()
 
-    @classmethod
-    def around(cls, service: "ChatService") -> "Sessions":
-        """A registry holding one conversation somebody else built.
-
-        For callers that make the conversation themselves - the tests do, and so
-        would anything embedding this - so that having one conversation does not
-        require a second code path through the routes. One path means the single
-        case is exercised by the same code the many-session case uses. It never
-        spawns anything of its own: the one conversation it holds already has
-        its connection, and `get` finds it in `_live` before reaching for `_opts`.
-        """
-        got = cls({}, None, lambda: service._brain, service.model_label)
-        got._live[service.session_id] = service
-        return got
+    # ⛔ `around` STOOD HERE: A CLASSMETHOD WITH ELEVEN CALLERS, NONE OF THEM
+    # THE PRODUCT. It built a registry holding one conversation somebody else
+    # had made, and it justified itself with "the tests do, and so would
+    # anything embedding this" - a user that does not exist. This is an
+    # application; the only importer of this module is `cli.py`.
+    #
+    # The argument it was written for was good and it did not move with it:
+    # a test driving ONE conversation should still go through `build_app` and
+    # the routes, so the single case is exercised by the same code the many
+    # case uses. That is a rule about the suite, and it now lives in the suite,
+    # in `tests/_sessions.py`. What is left here is the constructor the product
+    # calls and nothing else.
 
     async def close_all(self) -> None:
         """Close every conversation's own connection, for a clean shutdown.

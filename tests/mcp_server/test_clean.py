@@ -211,13 +211,11 @@ def test_a_tracking_query_is_trimmed_but_the_destination_is_not():
     assert "utm_40" not in out
 
 
-def test_stats_report_both_halves():
-    """A reduction figure alone says nothing about whether the result is still
-    usable. The most attractive -13% of that day cost 8.1% of the elements."""
-    s = clean.clean_stats("x" * 1000, "x" * 250)
-    assert s["reduction_pct"] == 75.0
-    assert s["chars_removed"] == 750
-    assert s["tokens_saved_est"] == 187
+# ⛔ `test_stats_report_both_halves` STOOD HERE AND ASSERTED ARITHMETIC. It
+# checked that 750 of 1000 characters is -75%, on a function nothing called.
+# The sentence it carried is true and is now where it can act - the invariant
+# at the top of `clean.py` - rather than in the docstring of a test for a
+# calculator nobody used.
 
 
 # --- the live-page half ----------------------------------------------------

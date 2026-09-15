@@ -1,5 +1,6 @@
 import pytest
-from aihawk.agent import _result_text, mcp_tools_to_openai, run_task
+from aihawk.agent import _result_text, mcp_tools_to_openai
+from _loop import run_task
 
 
 class _Tool:

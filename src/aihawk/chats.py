@@ -31,15 +31,15 @@ import time
 from pathlib import Path
 from typing import List, Optional
 
-from .storage import (erase as _erase, home, read_json,
-                      safe_name as _safe, write_atomically)
+from .storage import erase as _erase, file_for, home, read_json, write_atomically
 
-def _chats_dir() -> Path:
-    return home() / "chats"
+#: The directory this half of a session lives in. The only thing the two halves
+#: do not share, which is why it is the only thing named here.
+KIND = "chats"
 
 
 def chat_path(session_id: str) -> Path:
-    return _chats_dir() / ("%s.json" % _safe(session_id))
+    return file_for(KIND, session_id)
 
 
 def save_chat(session_id: str, name: str, history: List[dict],
@@ -74,7 +74,7 @@ def known_chats() -> List[dict]:
     """
     out: List[dict] = []
     try:
-        files = sorted(_chats_dir().glob("*.json"))
+        files = sorted((home() / KIND).glob("*.json"))
     except Exception:
         return out
     for f in files:

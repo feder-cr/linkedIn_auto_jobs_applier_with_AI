@@ -25,8 +25,8 @@ import time
 from pathlib import Path
 from typing import Dict, Optional
 
-from ..storage import (DEFAULT_SESSION_ID, erase as _erase, home,
-                       read_json, safe_name as _safe, write_atomically)
+from ..storage import (DEFAULT_SESSION_ID, erase as _erase, file_for,
+                       read_json, write_atomically)
 
 
 #: The piece of work a caller that names none is in, and so the file it
@@ -50,12 +50,13 @@ from ..storage import (DEFAULT_SESSION_ID, erase as _erase, home,
 _ = DEFAULT_SESSION_ID  # re-exported for callers that import it from here
 
 
-def _sessions_dir() -> Path:
-    return home() / "sessions"
+#: The directory this half of a session lives in. The only thing the two halves
+#: do not share, which is why it is the only thing named here.
+KIND = "sessions"
 
 
 def path_of(session_id: str) -> Path:
-    return _sessions_dir() / ("%s.json" % _safe(session_id))
+    return file_for(KIND, session_id)
 
 
 def save(session_id: str, browsers: Dict[str, dict],

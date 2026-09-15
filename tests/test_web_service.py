@@ -25,8 +25,8 @@ import pytest
 from aihawk.link import text_of
 from aihawk.chat import ChatService
 from aihawk.routes import build_app
-from aihawk.sessions import Sessions
 from aihawk.ui import PAGE
+from _sessions import around
 
 pytestmark = pytest.mark.asyncio
 
@@ -146,7 +146,7 @@ async def test_the_replay_flag_is_on_history_and_not_on_live_events():
     svc = ChatService(FakeLink(), TalkingBrain())
     await svc.send("go")
 
-    app = build_app(Sessions.around(svc))
+    app = build_app(around(svc))
     stream = [r for r in app.routes if r.path == "/chat/events"][0]
     assert stream is not None, "the events route must exist for the page to work"
 
@@ -166,7 +166,7 @@ async def test_an_event_after_subscription_is_delivered_once_as_live():
     send it once as replay and then again as live.
     """
     svc = ChatService(FakeLink(), SilentBrain())
-    app = build_app(Sessions.around(svc))
+    app = build_app(around(svc))
     route = [r for r in app.routes if r.path == "/chat/events"][0]
 
     response = await route.endpoint(_request(app))
@@ -278,7 +278,7 @@ async def test_the_app_exposes_exactly_the_routes_the_page_calls():
     rather than a restatement of it.
     """
     svc = ChatService(FakeLink(), SilentBrain())
-    paths = {r.path for r in build_app(Sessions.around(svc)).routes}
+    paths = {r.path for r in build_app(around(svc)).routes}
     assert paths == {"/",
                      # The session column, added in 0.17.0.
                      "/sessions", "/sessions/new", "/sessions/rename",
@@ -369,7 +369,7 @@ async def test_the_live_view_never_causes_a_browser_to_start():
     """
     link = FakeLink()
     svc = ChatService(link, SilentBrain())
-    app = build_app(Sessions.around(svc))
+    app = build_app(around(svc))
     frame = [r for r in app.routes if r.path == "/live/frame"][0]
 
     resp = await frame.endpoint(_request(app))
@@ -433,7 +433,7 @@ class WatchingLink(FakeLink):
 
 async def _frame_route(link):
     """The frame route over a fresh app, asked with a request naming no browser."""
-    app = build_app(Sessions.around(ChatService(link, SilentBrain())))
+    app = build_app(around(ChatService(link, SilentBrain())))
     endpoint = [r for r in app.routes if r.path == "/live/frame"][0].endpoint
     return lambda: endpoint(_request(app))
 
@@ -779,7 +779,7 @@ async def test_a_reconnection_resumes_instead_of_replaying_the_whole_thing():
     listener below then receives the whole history again.
     """
     svc = ChatService(FakeLink(), SilentBrain())
-    app = build_app(Sessions.around(svc))
+    app = build_app(around(svc))
     events = [r for r in app.routes if r.path == "/chat/events"][0]
 
     for text in ("first", "second", "third"):
@@ -808,7 +808,7 @@ async def test_a_reconnection_carrying_another_conversation_is_told_to_wipe():
     Known-bad: comparing only the index and ignoring the epoch.
     """
     svc = ChatService(FakeLink(), SilentBrain())
-    app = build_app(Sessions.around(svc))
+    app = build_app(around(svc))
     events = [r for r in app.routes if r.path == "/chat/events"][0]
     await svc.emit("said", "from the conversation that is gone")
 
@@ -842,7 +842,7 @@ async def test_a_page_that_joins_a_run_in_flight_is_told_the_run_is_in_flight():
     """
     brain = HangingBrain()
     svc = ChatService(FakeLink(), brain)
-    app = build_app(Sessions.around(svc))
+    app = build_app(around(svc))
     events = [r for r in app.routes if r.path == "/chat/events"][0]
 
     svc.start("something long")
@@ -888,7 +888,7 @@ async def test_a_page_that_joins_an_idle_service_is_told_the_turn_is_over():
     svc = ChatService(FakeLink(), SilentBrain())
     svc.history = [{"kind": "you", "text": "what is on the page"},
                    {"kind": "said", "text": "Three roles, all remote."}]
-    app = build_app(Sessions.around(svc))
+    app = build_app(around(svc))
     events = [r for r in app.routes if r.path == "/chat/events"][0]
 
     resp = await events.endpoint(_request(app))
@@ -951,7 +951,7 @@ async def test_a_cleared_conversation_carries_no_command_in_its_transcript():
     later is never told to throw anything away.
     """
     svc = ChatService(FakeLink(), SilentBrain())
-    app = build_app(Sessions.around(svc))
+    app = build_app(around(svc))
 
     await svc.emit("you", "the first instruction")
     await svc.emit("said", "the first answer")

@@ -25,19 +25,22 @@ from __future__ import annotations
 
 import os
 
-from aihawk.mcp import store
+#: Read from `aihawk.storage`, which is where `home()` lives. It used to be
+#: reached through `aihawk.mcp.store`, which re-exported it - so this test
+#: proved its property through a name that was only forwarding.
+from aihawk import storage
 
 #: What a line running at import time sees. Captured HERE, at module level, on
 #: purpose: read inside a test it would show the per-test directory and prove
 #: nothing about the moment the defect lives in.
-AT_IMPORT = store.home()
+AT_IMPORT = storage.home()
 
 
 def _the_real_one():
     """Where sessions would be kept with nothing redirecting them."""
     keep = os.environ.pop("AIHAWK_HOME", None)
     try:
-        return store.home()
+        return storage.home()
     finally:
         if keep is not None:
             os.environ["AIHAWK_HOME"] = keep
@@ -54,7 +57,7 @@ def test_importing_a_test_module_cannot_reach_the_real_directory():
 def test_and_neither_can_a_test_body():
     """The fixture's half of the same promise, and the older one."""
     real = _the_real_one()
-    assert store.home() != real
+    assert storage.home() != real
     assert os.environ.get("AIHAWK_HOME"), "the redirection is not in place"
 
 

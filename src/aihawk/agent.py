@@ -4,13 +4,14 @@ ONE loop. There were briefly two, which is how a README sentence saying "same
 machinery" becomes false without anybody editing it: the second copy gets a fix,
 the first does not, and the two answers diverge for a task that looks identical
 from outside. They were merged, so this loop now has exactly one consumer in
-the product (the interface, through `OpenRouterBrain` at the end of this
-file) and one in the tests (`run_task`).
+the product: the interface, through `OpenRouterBrain` at the end of this file.
+The suite drives the same loop, through a four-line helper that lives in the
+suite rather than here.
 
 The narration is a parameter rather than a mode. The interface passes the
-callback that pushes events to the page; `run_task` passes nothing and gets
-silence. A loop that knows whether it is being watched is a loop with two
-behaviours to test.
+callback that pushes events to the page; a caller that wants an answer and no
+transcript passes nothing. A loop that knows whether it is being watched is a
+loop with two behaviours to test.
 """
 from __future__ import annotations
 
@@ -122,8 +123,8 @@ Say = Callable[[str, str], Awaitable[None]]
 
 
 async def _silent(_kind: str, _text: str) -> None:
-    """The default narrator: says nothing, which is what `run_task` wants -
-    an answer, not a transcript."""
+    """The default narrator: says nothing, for a caller that wants an answer
+    rather than a transcript."""
 
 
 def mcp_tools_to_openai(tools) -> List[dict]:
@@ -366,18 +367,21 @@ class Conversation:
                                       "content": shorten(text, SENT, "sent")})
 
 
-async def run_task(mcp, task: str, *, client, model: str,
-                   max_tokens: int = Conversation.MAX_TOKENS) -> str:
-    """One instruction, one answer, no narration.
-
-    Four lines over `Conversation`, not called by the product - kept because
-    the suite drives the loop through it, about twenty-five tests in
-    test_agent_loop.py, and rewriting all of them onto `Conversation` directly
-    would move a lot of code to delete four lines.
-    """
-    tools = (await mcp.list_tools()).tools
-    convo = Conversation(client, model, max_tokens=max_tokens)
-    return await convo.run(task, mcp.call_tool, tools)
+# ⛔ `run_task` STOOD HERE AND THE PRODUCT NEVER CALLED IT. Four lines over
+# `Conversation`, kept because about twenty-five tests drove the loop through
+# it - which its own docstring said, and which is the whole objection: a second
+# entry point to the one loop, and the second one is the one nobody ships.
+#
+# It was not merely unused. It took an object with `.list_tools()` and
+# `.call_tool()`, the MCP session shape the product wrapped when `Link` arrived,
+# while the product passes `link.call` and `link.tools` straight to
+# `Conversation.run`. So this file offered two ideas of how a tool is reached
+# and only one of them was real - and the single end-to-end test of the loop
+# reached PAST the Link for `link.session` to use the other one.
+#
+# The four lines moved to `tests/_loop.py`, where the convenience belongs and
+# where nothing can mistake them for API; the end-to-end test now drives the
+# canonical path. One way to run a turn.
 
 
 # --- what the interface plugs in ----------------------------------------------

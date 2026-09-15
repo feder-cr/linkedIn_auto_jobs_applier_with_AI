@@ -67,8 +67,8 @@ from aihawk.agent import (
     Conversation,
     _result_text,
     mcp_tools_to_openai,
-    run_task,
 )
+from _loop import run_task
 
 
 # --------------------------------------------------------------------------
