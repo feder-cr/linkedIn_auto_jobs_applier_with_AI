@@ -77,7 +77,6 @@ class _FakeContext:
         pass
 
 
-@pytest.mark.asyncio
 async def test_the_capture_starts_once_and_answers_the_latest_frame():
     s = StealthSession()
     s._context = _FakeContext()
@@ -99,7 +98,6 @@ async def test_the_capture_starts_once_and_answers_the_latest_frame():
     assert len(page.screencast.starts) == 1, "a second call must not start again"
 
 
-@pytest.mark.asyncio
 async def test_closing_the_session_stops_its_capture():
     s = StealthSession()
     s._context = _FakeContext()
@@ -113,7 +111,6 @@ async def test_closing_the_session_stops_its_capture():
     assert id(page) not in s._watch
 
 
-@pytest.mark.asyncio
 async def test_no_frame_in_time_is_said_in_words():
     s = StealthSession()
     s._context = _FakeContext()
@@ -123,7 +120,6 @@ async def test_no_frame_in_time_is_said_in_words():
     assert "no frame arrived" in str(told.value)
 
 
-@pytest.mark.asyncio
 async def test_an_engine_without_a_screencast_is_named_not_leaked():
     """An older wrapper refuses `screencastStart` with a protocol sentence
     about a guid; the person reading this tool's error needs the feature and
@@ -150,7 +146,6 @@ def _timed(s: StealthSession):
     return now
 
 
-@pytest.mark.asyncio
 async def test_a_capture_that_went_quiet_is_started_again():
     """⛔ A FRAME SERVED WITHOUT AN AGE IS A FROZEN PANE THAT LOOKS LIVE.
 
@@ -188,7 +183,6 @@ async def test_a_capture_that_went_quiet_is_started_again():
     assert len(page.screencast.starts) == 2, "the capture was not started again"
 
 
-@pytest.mark.asyncio
 async def test_a_quiet_page_is_not_a_quiet_capture():
     """The counter-case: frames keep arriving on a page that never changes,
     so a young frame is served as it is. Restarting on every look would cost a
@@ -209,7 +203,6 @@ async def test_a_quiet_page_is_not_a_quiet_capture():
     assert len(page.screencast.starts) == 1, "a live capture was restarted"
 
 
-@pytest.mark.asyncio
 async def test_a_restart_that_stays_silent_is_dropped_with_the_reason():
     """A capture started on a window that cannot be captured - minimised, say
     - delivers nothing, and keeping it would make every later look wait on it.
@@ -236,7 +229,6 @@ BINARY = os.environ.get("STEALTHFOX_BINARY")
 
 
 @pytest.mark.e2e
-@pytest.mark.asyncio
 @pytest.mark.skipif(not BINARY, reason="set STEALTHFOX_BINARY to a patched Firefox")
 async def test_the_frame_is_the_window_of_a_real_browser():
     """Against a real engine, in the server's default mode (headless, which on
@@ -258,7 +250,6 @@ async def test_the_frame_is_the_window_of_a_real_browser():
 
 
 @pytest.mark.e2e
-@pytest.mark.asyncio
 @pytest.mark.skipif(not BINARY or sys.platform != "win32",
                     reason="a real engine on Windows, where a window can be minimised")
 async def test_the_frame_comes_back_after_the_window_was_minimised():
@@ -351,7 +342,6 @@ def _jpeg_height(data: bytes) -> int:
     raise AssertionError("no SOF marker in the JPEG")
 
 
-@pytest.mark.asyncio
 async def test_the_capture_is_asked_for_the_rate_somebody_watching_needs():
     """⛔ THE LAST LINK OF A CHAIN THAT WAS SLOW IN THREE PLACES. The engine
     makes what it is asked for, the wrapper passes the request on since 0.14.0,

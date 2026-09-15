@@ -40,7 +40,6 @@ BINARY = os.environ.get("STEALTHFOX_BINARY")
 
 pytestmark = [
     pytest.mark.e2e,
-    pytest.mark.asyncio,
     pytest.mark.skipif(not BINARY or sys.platform != "win32",
                        reason="a real engine on Windows, where a process tree can be ended by pid"),
 ]

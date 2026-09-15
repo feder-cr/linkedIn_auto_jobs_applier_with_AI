@@ -1,7 +1,4 @@
-import pytest
 
-
-@pytest.mark.asyncio
 async def test_server_registers_expected_tools():
     from aihawk.mcp import server
     tools = await server.mcp.list_tools()
@@ -57,7 +54,6 @@ async def test_server_registers_expected_tools():
     assert names == expected, {"missing": expected - names, "unexpected": names - expected}
 
 
-@pytest.mark.asyncio
 async def test_every_tool_description_is_english_and_ascii():
     """A tool description is not documentation, it is the prompt the model reads
     to decide whether to call the tool at all.
@@ -94,7 +90,6 @@ async def test_every_tool_description_is_english_and_ascii():
     assert not problems, problems
 
 
-@pytest.mark.asyncio
 async def test_every_tool_actually_has_a_description():
     """An undescribed tool is one the model will not choose, or will choose
     wrongly. Cheaper to assert than to debug from the other side."""

@@ -23,7 +23,6 @@ pytestmark = [pytest.mark.e2e, pytest.mark.skipif(
 )]
 
 
-@pytest.mark.asyncio
 async def test_ephemeral_launch_navigate_and_screenshot():
     s = StealthSession(binary_path=BINARY, headless=True)
     await s.start()
@@ -40,7 +39,6 @@ async def test_ephemeral_launch_navigate_and_screenshot():
         await s.close()
 
 
-@pytest.mark.asyncio
 async def test_persistent_context_launch_is_the_c1_path():
     """This is exactly the path C1 crashed on: __aenter__() returns a
     BrowserContext (no .new_context()) when profile_dir is set."""
@@ -58,7 +56,6 @@ async def test_persistent_context_launch_is_the_c1_path():
             await s.close()
 
 
-@pytest.mark.asyncio
 async def test_stdio_drive_screenshot_is_image_content():
     """Realness check (rule 12): drive the browser via the MCP tools over
     the real stdio server, not just via the library API, and confirm the

@@ -15,8 +15,6 @@ from invisible_playwright.async_api import TargetClosedError
 from aihawk.mcp import GONE, NOT_OPEN, actions, server, store
 from aihawk.mcp.work import REMEMBERED, Work
 
-pytestmark = pytest.mark.asyncio
-
 
 class _Recording:
     """A session that launches nothing and remembers what it was built with."""

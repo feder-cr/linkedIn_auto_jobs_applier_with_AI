@@ -32,8 +32,6 @@ from aihawk.routes import build_app
 from aihawk.sessions import Sessions
 from aihawk.ui import PAGE
 
-pytestmark = pytest.mark.asyncio
-
 
 class FakeLink:
     """Shaped like `Link`, recording every call made to THIS ONE conversation's

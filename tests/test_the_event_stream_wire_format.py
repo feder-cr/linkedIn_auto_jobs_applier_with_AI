@@ -24,15 +24,11 @@ import asyncio
 import contextlib
 import json
 
-import pytest
-
 from aihawk.chat import ChatService
 from aihawk.routes import build_app
 from _sessions import around
 
 from test_web_service import FakeLink, HangingBrain, TalkingBrain
-
-pytestmark = pytest.mark.asyncio
 
 
 class Wire:

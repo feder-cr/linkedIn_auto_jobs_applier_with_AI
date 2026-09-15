@@ -53,8 +53,6 @@ from aihawk.chat import DEFAULT_CHAT_ID
 from aihawk.sessions import Sessions
 from aihawk.routes import build_app
 
-pytestmark = pytest.mark.asyncio
-
 #: This checkout's `src/`, so the child process imports the code under test
 #: rather than whatever `aihawk` is installed. `runner.child_env` copies this
 #: process's environment, so setting it here is what reaches the child.
