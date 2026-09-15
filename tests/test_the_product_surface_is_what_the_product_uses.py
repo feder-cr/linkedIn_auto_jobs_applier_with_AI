@@ -32,8 +32,12 @@ EXISTS. Two scans, and they answer two different questions.
     package: 178 of them in 25 modules, with 18 more exempt because they are
     registered (below). A name at module level is unambiguous, so counting is
     enough.
-  * `uncalled` - methods: 59 of them. Counting is NOT enough here, and saying so
-    is what the first version of this file did instead of doing the work:
+  * `uncalled` - methods: 47 of them, out of the 59 defined. The twelve left out
+    are methods of a class WITH A BASE, which may be satisfying somebody else's
+    contract so the caller is the base's, and methods carrying a decorator,
+    which can hand them somewhere this cannot follow. Counting is NOT enough
+    here, and saying so is what the first version of this file did instead of
+    doing the work:
     `plan.describe(...)` and `SessionPlan.describe(...)` are the same attribute
     name, so a scan that counts names cannot tell the dead method from the live
     function beside it. It is separated by resolving the OWNER - an attribute on
@@ -277,6 +281,12 @@ def test_the_gate_is_looking_at_the_whole_package():
                   if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef))
                   and not child.name.startswith("__") and not child.decorator_list)
     assert methods >= 30, "only %d methods judged; the scan has gone blind" % methods
+    # ⛔ AND A CEILING TOO, because this number is the one the docstring above
+    # publishes and a hand-written figure goes stale the day somebody changes
+    # what is excluded. It was written as 59 first - the count BEFORE the
+    # exclusions - which is how a perimeter stops describing the gate that
+    # carries it.
+    assert methods <= 120, "%d methods judged; the exclusions have stopped applying" % methods
     reached = set()
     for text in sources.values():
         reached.update(_on_an_object(ast.parse(text), known))
