@@ -81,7 +81,17 @@ dependencies = [
 # httpx is declared for the same reason as pydantic above: the test that drives
 # a REAL server through the routes uses `httpx.ASGITransport` to reach the app
 # inside the test's own event loop, and it was arriving through mcp.
-test = ["pytest>=8", "pytest-asyncio>=0.23", "httpx>=0.27"]
+# ⛔ `invisible-core` IS DECLARED HERE BECAUSE THE SUITE IMPORTS IT DIRECTLY,
+# not because it was missing: it already arrives through `invisible-playwright`.
+# Since 30.23.0 the language gate is `invisible_core.english`, and two test
+# files import it - the one that drives the gate, and the one that reads its
+# Italian word list to check the tool descriptions. An import that relies on a
+# TRANSITIVE dependency works until the day the wrapper stops needing the core,
+# and then breaks here for a reason that names neither repository. The gate
+# `test_the_suite_declares_everything_it_imports` caught this on the first run
+# against the published stack, which is what it is for.
+test = ["pytest>=8", "pytest-asyncio>=0.23", "httpx>=0.27",
+        "invisible-core>=30.23.0"]
 
 # ⛔ NARROW ON PURPOSE, AND IT IS HERE SO THE CI JOB AND A DEVELOPER RUN THE
 # SAME THING. `F` is pyflakes: a name that is not defined, an import nobody
