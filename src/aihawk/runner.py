@@ -22,18 +22,17 @@ from typing import Any, Mapping, Optional
 KEY_VARIABLE = "OPENROUTER_API_KEY"
 
 
-def child_env(opts: Mapping[str, Any], base_env: Mapping[str, str],
-              *, key: Optional[str] = None) -> dict:
-    """The environment the browser server is started with.
+def without_key(base_env: Mapping[str, str], *, key: Optional[str] = None) -> dict:
+    """`base_env` with the model key gone: by name, and by every other name
+    carrying the same value.
 
-    The removal is the point. Everything else is options travelling under the
-    names the engine reads, and an absent option adds no variable at all rather
-    than an empty one, because an empty STEALTHFOX_PROXY is not the same as no
-    proxy.
+    ⛔ ONE PLACE KNOWS WHAT COUNTS AS THE KEY, because there are now two callers
+    and they are the same question asked from opposite ends. `child_env` builds
+    the environment for a process about to start; `forget_key` strips the
+    environment of a process already running. Written twice, one of them would
+    have learned about a new alias and the other would not.
 
-    ⛔ IT REMOVES BY VALUE AS WELL AS BY NAME, and the two are not the same
-    guarantee. Popping one exact name left the secret reachable two ways, both
-    ordinary rather than exotic:
+    The two halves of the removal are not one guarantee:
 
       * a lowercase `openrouter_api_key`, which survives on any case-sensitive
         platform, and this product runs on Linux;
@@ -41,17 +40,9 @@ def child_env(opts: Mapping[str, Any], base_env: Mapping[str, str],
         OpenRouter key is normal practice here, because the client is
         OpenAI-compatible and talks to OpenRouter through it.
 
-    Neither is theoretical: the leak reaches the browser itself, not just the
-    MCP server. `invisible_playwright._session.build_env` starts from the
-    server process's own environment and hands that to the Firefox launch, so
-    whatever survives here is inherited by the browser.
-
-    Both were recorded as strict xfails in `tests/test_key_isolation.py`, each
-    naming what would close it. This is that, so those markers are gone.
-
-    `key` is the resolved key when the caller has one - passed on the command
-    line, it never appears in `base_env` at all, so a copy of it under another
-    name could not be found by reading the environment alone.
+    `key` is the resolved key when the caller has one: passed on the command
+    line it never appears in the environment at all, so a copy of it under
+    another name could not be found by reading the environment alone.
     """
     secrets = {value for name, value in base_env.items()
                if name.upper() == KEY_VARIABLE and value}
@@ -62,8 +53,70 @@ def child_env(opts: Mapping[str, Any], base_env: Mapping[str, str],
     # like this turns into "delete most of the environment".
     secrets.discard("")
 
-    env = {name: value for name, value in base_env.items()
-           if name.upper() != KEY_VARIABLE and value not in secrets}
+    return {name: value for name, value in base_env.items()
+            if name.upper() != KEY_VARIABLE and value not in secrets}
+
+
+def forget_key(env) -> list:
+    """Take the model key out of a LIVE environment, this process's own.
+    Answers the names it removed, so a caller can say so rather than doing it
+    silently.
+
+    ⛔ THIS EXISTS BECAUSE `child_env` WAS UNDONE HALF A SECOND AFTER IT RAN, by
+    the child itself. Measured 2026-09-16 against the published 0.68.2: the
+    interface strips the key from the environment it hands over, by name and by
+    value, and every one of the twenty-two cases in `test_key_isolation.py`
+    passes. Then the child - which is `python -m aihawk`, the same click group -
+    reads `.env` from the directory it inherited, finds `OPENROUTER_API_KEY` in
+    it, and puts it straight back. The interface said so out loud and nobody was
+    reading: `env      .env: OPENROUTER_API_KEY` is printed twice at startup,
+    once by each process, and that line names only what was APPLIED, which is to
+    say only what was not already there.
+
+    What it costs is the guarantee the stripping was written for, because
+    `invisible_playwright._session.build_env` seeds the Firefox launch from this
+    process's own environment. Proven by calling it: the key arrives in the
+    engine's environment.
+
+    ⛔ AND IT IS NOT A GUARD ON "WAS I SPAWNED BY THE INTERFACE". The browser
+    server has no use for a model key whoever started it, so somebody running
+    `uvx aihawk` in a shell that exports one, or beside a `.env` that holds one,
+    has exactly the same exposure and was never told. Reading the environment
+    covers the file, the export and any alias at once, which a guard on the
+    file alone would not.
+    """
+    keep = without_key(env)
+    gone = [name for name in list(env) if name not in keep]
+    for name in gone:
+        del env[name]
+    return gone
+
+
+def child_env(opts: Mapping[str, Any], base_env: Mapping[str, str],
+              *, key: Optional[str] = None) -> dict:
+    """The environment the browser server is started with.
+
+    The removal is the point. Everything else is options travelling under the
+    names the engine reads, and an absent option adds no variable at all rather
+    than an empty one, because an empty STEALTHFOX_PROXY is not the same as no
+    proxy.
+
+    ⛔ THE REMOVAL ITSELF IS `without_key`, ABOVE, AND THE ACCOUNT OF WHY IT
+    TAKES TWO FORMS LIVES THERE. It was written out here while this was the
+    only caller; there are two now, and a rule kept in the docstring of one of
+    them is a rule the other never learns.
+
+    Neither form is theoretical: the leak reaches the browser itself, not just
+    the MCP server. `invisible_playwright._session.build_env` starts from the
+    server process's own environment and hands that to the Firefox launch, so
+    whatever survives is inherited by the engine.
+
+    ⛔ AND THIS ALONE IS NOT ENOUGH, which is what 0.68.2 shipped. Handing over
+    a clean environment does not keep the child clean: it reads `.env` on its
+    own way up and takes the key back. `forget_key` is the other half, and the
+    server calls it for itself.
+    """
+    env = without_key(base_env, key=key)
 
     if opts.get("proxy"):
         env["STEALTHFOX_PROXY"] = str(opts["proxy"])
