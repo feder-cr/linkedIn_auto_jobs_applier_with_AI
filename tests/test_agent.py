@@ -1,4 +1,5 @@
-from aihawk.agent import _result_text, mcp_tools_to_openai
+from aihawk.agent import mcp_tools_to_openai
+from aihawk.link import answer_of
 from _loop import run_task
 
 
@@ -63,14 +64,14 @@ class _FakeClient:
         self.chat = type("Chat", (), {"completions": _Completions()})()
 
 
-def test_result_text_falls_back_for_non_text_content():
+def test_answer_of_falls_back_for_non_text_content():
     none_text = type("Content", (), {"text": None})()
     result_with_none_text = type("Result", (), {"content": [none_text]})()
-    assert _result_text(result_with_none_text)[0] == "[non-text result]"
+    assert answer_of(result_with_none_text)[0] == "[non-text result]"
 
     no_text_attr = type("Content", (), {})()
     result_without_text_attr = type("Result", (), {"content": [no_text_attr]})()
-    assert _result_text(result_without_text_attr)[0] == "[non-text result]"
+    assert answer_of(result_without_text_attr)[0] == "[non-text result]"
 
 
 def test_mcp_tools_to_openai_shape():
