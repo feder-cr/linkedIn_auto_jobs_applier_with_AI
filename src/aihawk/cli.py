@@ -8,6 +8,7 @@ import sys
 import click
 
 from .llm import BASE_URL, resolve_key, resolve_model
+from .runner import forget_key
 
 #: The file read at startup, in the directory the command is run from.
 #:
@@ -90,15 +91,39 @@ def main(ctx) -> None:
     A `.env` in the directory you run from is read first, so the key and the
     browser path can live in a file instead of a shell profile. It never
     overrides something already in the environment.
+
+    Serving as the MCP server, this process then drops the model key from its
+    own environment whatever it came from, because a browser server has no use
+    for one and the engine it launches inherits what this holds.
     """
     applied = load_env_file()
+    serving = ctx.invoked_subcommand is None
+    if serving:
+        # ⛔ A BROWSER SERVER HAS NO USE FOR A MODEL KEY, AND WHATEVER THIS
+        # PROCESS HOLDS THE ENGINE INHERITS. This is where 0.68.2 handed it
+        # back: the interface strips the key from the environment it gives the
+        # child, carefully and with twenty-two tests behind it, and then the
+        # child runs this very function, finds the key in `.env`, and puts it
+        # straight back. The line below printed it twice, once per process, and
+        # that was the whole visible evidence.
+        #
+        # Read from the environment rather than filtered out of the file, so it
+        # covers the same key arriving any other way - exported in the shell by
+        # somebody running `uvx aihawk` by hand, or under an alias. The reason
+        # is on `runner.forget_key`.
+        #
+        # The names are dropped from what gets REPORTED too: saying a file
+        # applied something this process then threw away is a line that is not
+        # true by the time anybody reads it.
+        for name in forget_key(os.environ):
+            applied.pop(name, None)
     if applied:
         # Names, never values: this line exists so a reader knows the file was
         # found, and printing what was in it would put the key on the terminal.
         # On stderr when serving, because stdout is then the protocol channel.
         click.echo("env      %s: %s" % (ENV_FILE, ", ".join(sorted(applied))),
-                   err=ctx.invoked_subcommand is None)
-    if ctx.invoked_subcommand is None:
+                   err=serving)
+    if serving:
         _serve()
 
 

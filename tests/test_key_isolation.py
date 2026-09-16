@@ -7,25 +7,39 @@ A commit in this repository calls the removal a security fix, and the history
 carries a PR titled "Replace the committed API key", so the guarantee is not
 theoretical.
 
-Every test below names the known-bad input that breaks it. The two tests marked
-xfail(strict=True) assert guarantees the code does NOT yet provide: they are
-reachable leaks, not accepted trade-offs, and the strict marker turns the suite
-red the moment somebody fixes `child_env` without deleting the marker.
+Every test below names the known-bad input that breaks it. Two of them were once
+xfail(strict=True), asserting leaks the code did not yet close; they are plain
+assertions now, and the note above the line where they sat says when that
+happened. This paragraph described the markers for some time after they were
+gone, which is its own small version of the defect below.
 
-None of these tests launch a browser or spawn the MCP server. The one test that
-exercises `drive` replaces the transport with fakes.
+⛔ AND HANDING OVER A CLEAN ENVIRONMENT IS ONLY HALF THE GUARANTEE, which is
+what 0.68.2 shipped. Everything above the `forget_key` section asks the same
+question - is the environment we GIVE the child clean - and the answer was yes,
+in twenty-two ways. The child then read `.env` from the directory it inherited
+and took the key back, so the process that launches Firefox held it anyway.
+Nothing here could see that, because every test stopped at the handover.
+
+So ONE test below spawns the real server as a subprocess. It is the only way to
+ask what the child does after it starts, which is where the defect lived; it
+starts no browser, and it ends by closing the child's stdin.
 """
 from __future__ import annotations
 
 import contextlib
 import os
+import pathlib
 import sys
 
 import pytest
 
 from aihawk import link as link_mod
 from aihawk import llm as llm_mod
-from aihawk.runner import child_env
+from aihawk.runner import child_env, forget_key
+
+#: The checkout, for the one test that starts the server as a real process and
+#: has to tell it where this tree is.
+ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 # A sentinel that cannot occur by accident inside PATH or any other real value.
 KEY = "sk-or-v1-TESTSENTINEL-do-not-ship-0123456789"
@@ -472,3 +486,159 @@ def test_the_parent_client_is_the_one_that_gets_the_key(monkeypatch):
 
     assert seen.get("client") == {"api_key": KEY}, (
         "the parent client never got the key, so nothing can call the model")
+
+
+# ---------------------------------------------------------------------------
+# the other half: the child does not take the key back
+# ---------------------------------------------------------------------------
+
+def test_forget_key_takes_the_key_out_of_a_live_environment():
+    """`child_env` builds a clean environment for a process not started yet.
+    This strips the environment of a process already running, which is the only
+    thing that helps once the child has read `.env` for itself.
+
+    Known-bad: delete by the exact name only, and the alias survives.
+    """
+    env = {"PATH": "x", KEY_NAME: KEY, "openrouter_api_key": KEY,
+           "OPENAI_API_KEY": KEY, "STEALTHFOX_SEED": "7"}
+    gone = forget_key(env)
+
+    assert values_carrying(env, KEY) == [], (
+        "the key is still reachable under %r" % values_carrying(env, KEY))
+    assert env == {"PATH": "x", "STEALTHFOX_SEED": "7"}, (
+        "it removed more than the key, or less: %r" % env)
+    assert sorted(gone) == ["OPENAI_API_KEY", KEY_NAME, "openrouter_api_key"], (
+        "it does not say what it removed: %r" % gone)
+
+
+def test_forget_key_leaves_an_environment_that_never_had_one_alone():
+    """Known-bad: an empty secret matching every empty variable is how a guard
+    like this turns into "delete most of the environment"."""
+    env = {"PATH": "x", "EMPTY": "", KEY_NAME: ""}
+    gone = forget_key(env)
+    assert env == {"PATH": "x", "EMPTY": ""}, env
+    assert gone == [KEY_NAME], gone
+
+
+@pytest.fixture()
+def environment_restored():
+    """Put `os.environ` back exactly as it was, whatever the test did to it.
+
+    ⛔ NOT TIDINESS: THESE TESTS WRITE INTO THE REAL ENVIRONMENT AND ONE OF THEM
+    DELETES FROM IT. `load_env_file` sets variables that `monkeypatch` never saw,
+    so they outlive the test - measured while writing this, a `STEALTHFOX_SEED`
+    left behind by one test made the next one read an environment that already
+    held it, so the file applied nothing, the line under test was empty, and the
+    failure pointed at the product. And `forget_key` deletes by VALUE, so a
+    developer running the suite with a real `OPENAI_API_KEY` exported would have
+    lost it for the rest of the session.
+    """
+    before = dict(os.environ)
+    yield
+    os.environ.clear()
+    os.environ.update(before)
+
+
+def _serving(tmp_path, monkeypatch, contents):
+    """Run the CLI's own group callback down the SERVER branch, with `.env` in
+    the directory it was started from and the key nowhere else.
+
+    `_serve` is replaced because the real one blocks forever on stdin; what is
+    under test is everything the group does before it.
+    """
+    from click.testing import CliRunner
+    from aihawk import cli as cli_mod
+
+    (tmp_path / ".env").write_bytes(contents.encode("utf-8"))
+    monkeypatch.delenv(KEY_NAME, raising=False)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(cli_mod, "_serve", lambda: None)
+    return CliRunner().invoke(cli_mod.main, [])
+
+
+def test_the_server_does_not_take_the_key_back_out_of_the_env_file(
+        tmp_path, monkeypatch, environment_restored):
+    """⛔ THE DEFECT 0.68.2 SHIPPED, in one test. The interface strips the key
+    from the environment it hands the child; the child then reads `.env` and
+    puts it back, and `build_env` seeds the Firefox launch from this
+    environment.
+
+    Known-bad: take the `forget_key` call out of `cli.main` and the key is in
+    `os.environ` at the end of this.
+    """
+    got = _serving(tmp_path, monkeypatch,
+                   "%s=%s\nSTEALTHFOX_SEED=4242\n" % (KEY_NAME, KEY))
+
+    assert got.exit_code == 0, got.output
+    assert os.environ.get(KEY_NAME) is None, (
+        "the server took the key back out of the file")
+    assert values_carrying(os.environ, KEY) == [], (
+        "the key is reachable under %r" % values_carrying(os.environ, KEY))
+    assert os.environ.get("STEALTHFOX_SEED") == "4242", (
+        "it dropped the settings the server actually needs")
+
+
+def test_what_the_server_says_it_applied_is_what_it_kept(
+        tmp_path, monkeypatch, environment_restored):
+    """The line names what the file APPLIED, so naming something dropped a
+    moment later would be false by the time anybody read it - and it was the
+    only visible sign of the leak, printed once per process.
+
+    Known-bad: report `applied` before dropping, and the key is named again.
+    """
+    got = _serving(tmp_path, monkeypatch,
+                   "%s=%s\nSTEALTHFOX_SEED=4242\n" % (KEY_NAME, KEY))
+    assert "STEALTHFOX_SEED" in got.output, got.output
+    assert KEY_NAME not in got.output, (
+        "the server still reports applying the key: %r" % got.output)
+    assert KEY not in got.output, "the VALUE reached the terminal"
+
+
+def test_the_interface_still_gets_the_key_from_the_env_file(
+        tmp_path, monkeypatch, environment_restored):
+    """⛔ THE FIX MUST NOT BE "DELETE THE KEY EVERYWHERE". The interface is the
+    half that talks to OpenRouter, and `.env` is the documented place to put
+    the key, so dropping it here would turn a leak into a product that cannot
+    start.
+
+    Known-bad: call `forget_key` unconditionally in `cli.main`.
+    """
+    from click.testing import CliRunner
+    from aihawk import cli as cli_mod
+
+    (tmp_path / ".env").write_bytes(("%s=%s\n" % (KEY_NAME, KEY)).encode("utf-8"))
+    monkeypatch.delenv(KEY_NAME, raising=False)
+    monkeypatch.chdir(tmp_path)
+    # `--help` on the subcommand runs the GROUP callback and then stops before
+    # the command body, which is the branch under test without serving anything.
+    CliRunner().invoke(cli_mod.main, ["ui", "--help"])
+
+    assert os.environ.get(KEY_NAME) == KEY, (
+        "the interface lost the key it is the one process that needs")
+
+
+def test_a_real_server_process_does_not_hold_the_key(tmp_path, environment_restored):
+    """The whole chain, in a real process: a clean environment handed over, a
+    `.env` beside it holding the key, and the server asked what it ended up
+    with.
+
+    It reports through its own stderr line rather than through anything written
+    for the test: that line names what the file applied, so the key appearing
+    there is the leak and its absence is the fix. Ends by closing stdin, which
+    is the EOF a client disconnecting sends.
+    """
+    import subprocess
+
+    (tmp_path / ".env").write_bytes(
+        ("%s=%s\nSTEALTHFOX_SEED=4242\n" % (KEY_NAME, KEY)).encode("utf-8"))
+    env = child_env({}, dict(os.environ, **{KEY_NAME: KEY}), key=KEY)
+    env["PYTHONPATH"] = str(ROOT / "src")
+
+    done = subprocess.run([sys.executable, "-m", "aihawk"], cwd=str(tmp_path),
+                          env=env, input=b"", capture_output=True, timeout=120)
+    err = done.stderr.decode("utf-8", "replace")
+
+    assert "STEALTHFOX_SEED" in err, (
+        "the server did not read the file at all, so this proves nothing: %r" % err[:300])
+    assert KEY_NAME not in err, ("the server applied the key from the file: %r" % err[:300])
+    assert KEY not in err, "the key VALUE reached stderr"
