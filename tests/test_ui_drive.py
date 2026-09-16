@@ -42,7 +42,8 @@ import pytest
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
-from aihawk.agent import _result_text, mcp_tools_to_openai
+from aihawk.agent import mcp_tools_to_openai
+from aihawk.link import answer_of
 from aihawk.runner import child_env
 
 # Every test in this file drives a browser. The per-test decorators below say
@@ -403,7 +404,7 @@ class _McpDriver:
 def _result_text_all(result):
     """Every text part of a result, not just the first.
 
-    Deliberately NOT `aihawk.agent._result_text`: that one returns
+    Deliberately NOT `aihawk.link.answer_of`: that one returns
     `content[0]` only, which is what the model sees and is a thing under test
     below, not a thing to test with.
     """
@@ -897,7 +898,7 @@ def test_a_click_at_coordinates_lands_but_reaches_the_model_as_no_content(browse
     """Two facts in one run, because they only matter together.
 
     browser_click_at works: the click lands and the page reacts. What comes
-    back is an Image, and `aihawk.agent._result_text` reads `content[0].text`,
+    back is an Image, and `aihawk.link.answer_of` reads `content[0].text`,
     which an ImageContent does not have - so the model driving this tool is
     told "[non-text result]" and never sees the screenshot the tool exists to
     return. Same for browser_take_screenshot, which then carries nothing else.
@@ -919,11 +920,11 @@ def test_a_click_at_coordinates_lands_but_reaches_the_model_as_no_content(browse
     assert browser.call("browser_read_text", selector="#out") == "clicked 1"
 
     # And what the agent would put in the model's transcript for that call.
-    assert _result_text(result)[0] == "[non-text result]"
+    assert answer_of(result)[0] == "[non-text result]"
 
     shot = browser.call_result("browser_take_screenshot", {}, timeout=60.0)
     assert not shot.isError, _result_text_all(shot)
-    assert _result_text(shot)[0] == "[non-text result]"
+    assert answer_of(shot)[0] == "[non-text result]"
 
 
 # --- what the live pane receives --------------------------------------------

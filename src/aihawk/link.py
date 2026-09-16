@@ -25,8 +25,10 @@ was actually up.
 
 The real question exists now: `browser_watch` refuses rather than starts when
 nothing is running, and `browser_list` answers what is held without waking any
-of it (`registry.peek` reached from `looking`, in `mcp/server.py`), so a client
-can simply ask and read the answer.
+of it (`Work.listing`, in `mcp/work.py`), so a client can simply ask and read
+the answer. That parenthesis named `registry.peek` and a `looking` helper in
+`mcp/server.py` until 2026-09-16, and neither had existed for weeks: the
+paragraph opens by warning about stale reasoning and had gone stale itself.
 `Link` remembers nothing any more; there is nothing left it needs to.
 """
 from __future__ import annotations
@@ -120,14 +122,46 @@ class Link:
 def text_of(result) -> str:
     """The text of a tool result, or an empty string.
 
-    Shared with the agent loop rather than written twice: a tool result is read
-    in two places now, and two readers of one wire format drift.
+    ⛔ THE ONE PLACE THAT READS A TOOL RESULT, AND THE SENTENCE ABOVE USED TO
+    CLAIM THAT WHILE IT WAS FALSE. It said "shared with the agent loop rather
+    than written twice", and the agent loop did not call it: `_result_text` in
+    `agent.py` carried these same five lines, the `[non-text result]` literal
+    included, and imported nothing from here. Two copies with a test suite
+    each, so either could have drifted and stayed green on both sides. The
+    docstring asserting the invariant is what made it hard to see, because a
+    reader checking for duplication found a sentence saying there was none.
     """
     content = getattr(result, "content", None)
     if not content:
         return ""
     first = content[0]
     return getattr(first, "text", None) or "[non-text result]"
+
+
+def answer_of(result) -> tuple[str, bool]:
+    """What the tool said, and whether it was a failure.
+
+    ⛔ MCP REPORTS A FAILED TOOL AS A RESULT, NOT AS AN EXCEPTION. A tool that
+    cannot do the thing answers with `isError` set and the reason in its text;
+    only a broken transport raises. Reading the text and ignoring the flag made
+    every failure arrive at the page as a success: the step row kept the past
+    tense that asserts the thing happened - `Navigated https://...` - with the
+    error printed after it in the colour of an ordinary result. Measured on a
+    live transcript: a `NS_ERROR_UNKNOWN_HOST` drawn at `data-state="ok"`, and
+    zero rows in the whole session had ever reached the error state the page
+    has always known how to draw.
+
+    For an agent that acts on real websites this is the worst kind of defect in
+    a log: not a gap, a lie, and it costs the reader the ability to trust any
+    other row.
+
+    ⛔ AND IT ANSWERS BOTH HALVES BECAUSE EVERY CALLER WANTS BOTH, which is
+    what three readers of one wire format were each solving alone: the loop
+    with a private copy of `text_of`, and `/live/frame` with `text_of(result)
+    if getattr(result, "isError", False) else ""` written out in the route. The
+    flag and the text are one fact about one result, so they are read once.
+    """
+    return text_of(result), bool(getattr(result, "isError", False))
 
 
 def image_of(result) -> "tuple[bytes, str] | None":

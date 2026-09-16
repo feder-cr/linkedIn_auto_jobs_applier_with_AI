@@ -23,9 +23,11 @@ Config comes from STEALTHFOX_* env vars. Nothing here opens a browser but
 that call. `work.py` is where that rule lives.
 
 Every tool here is a wrapper. The operations live in `actions.py` and the
-browsers live in `registry.py`, so every client drives them through exactly
-the same code rather than through a second implementation that would drift
-from this one.
+browsers in `work.py`, so every client drives them through exactly the same
+code rather than through a second implementation that would drift from this
+one. (This said `registry.py` until 2026-09-16, a file that has not existed
+since the eight-browser session became one piece of work - a present-tense
+sentence pointing a reader at nothing.)
 
 Transport is stdio by default, which is what existing clients expect. Set
 STEALTHFOX_MCP_TRANSPORT=http to serve over streamable HTTP instead, which is
@@ -98,8 +100,8 @@ async def _lifespan(_server):
     CLIENT, not once per process. Measured: with a client attached the machine
     had 7 firefox processes, and one second after that client disconnected it
     had 1 again. Closing here would therefore kill the browser every time
-    somebody detached, which is the exact behaviour the registry exists to
-    remove; there the close stays at process exit, below.
+    somebody detached, which is the exact behaviour keeping the browsers in
+    `Work` exists to remove; there the close stays at process exit, below.
 
     Over stdio `Server.run` enters this exactly once, and its exit is the last
     moment the event loop that opened the browsers is still running. That is

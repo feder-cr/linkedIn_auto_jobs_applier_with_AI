@@ -18,7 +18,7 @@ from starlette.responses import HTMLResponse, JSONResponse, Response, StreamingR
 from starlette.routing import Route
 
 from .chat import ChatService, DEFAULT_CHAT_ID
-from .link import image_of, text_of
+from .link import image_of, answer_of
 from . import __version__
 from .mcp import DEFAULT_BROWSER_ID, NOT_OPEN
 from .sessions import SessionGone, Sessions
@@ -343,7 +343,12 @@ async def frame(request: Request) -> Response:
         # screencast, or a window captured as nothing. That is a 503 with the
         # reason, never a 204, which would read as "nothing to look at" in the
         # one case where a person needs to read a sentence.
-        reason = text_of(result) if getattr(result, "isError", False) else ""
+        # Both halves from `answer_of`, which is the one reader of this wire format:
+        # this line used to spell the flag out for itself, beside a `text_of`
+        # that the agent loop was separately copying. Three readers of one
+        # result, now one.
+        text, failed = answer_of(result)
+        reason = text if failed else ""
         if reason and NOT_OPEN % (watching or DEFAULT_BROWSER_ID) not in reason:
             return JSONResponse({"error": reason[:200]}, status_code=503)
         # And one refusal is not a failure at all: a browser that is not

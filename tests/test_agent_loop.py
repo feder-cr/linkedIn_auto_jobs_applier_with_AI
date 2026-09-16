@@ -65,9 +65,9 @@ from aihawk.agent import (
     system_message,
     SYSTEM_PROMPT,
     Conversation,
-    _result_text,
     mcp_tools_to_openai,
 )
+from aihawk.link import answer_of
 from _loop import run_task
 
 
@@ -377,25 +377,25 @@ def test_no_tools_produces_an_empty_list():
 
 
 # --------------------------------------------------------------------------
-# _result_text: what the browser sends back to the model
+# answer_of: what the browser sends back to the model
 # --------------------------------------------------------------------------
 
-def test_result_text_returns_the_text_of_a_text_content():
-    assert _result_text(text_result("hello-from-the-page"))[0] == "hello-from-the-page"
+def test_answer_of_returns_the_text_of_a_text_content():
+    assert answer_of(text_result("hello-from-the-page"))[0] == "hello-from-the-page"
 
 
-def test_result_text_is_empty_for_empty_or_missing_content():
+def test_answer_of_is_empty_for_empty_or_missing_content():
     """Known-bad: indexing content[0] unguarded, which raises IndexError and
     kills the run on a tool that legitimately returns nothing."""
-    assert _result_text(mt.CallToolResult(content=[]))[0] == ""
+    assert answer_of(mt.CallToolResult(content=[]))[0] == ""
 
     class _NoContent:
         pass
 
-    assert _result_text(_NoContent())[0] == ""
+    assert answer_of(_NoContent())[0] == ""
 
 
-def test_result_text_labels_a_non_text_content_instead_of_crashing():
+def test_answer_of_labels_a_non_text_content_instead_of_crashing():
     """A real ImageContent has no `text` attribute at all. browser_take_screenshot
     returns exactly that.
 
@@ -405,10 +405,10 @@ def test_result_text_labels_a_non_text_content_instead_of_crashing():
     shot = mt.CallToolResult(
         content=[mt.ImageContent(type="image", data="aGk=", mimeType="image/png")]
     )
-    assert _result_text(shot)[0] == "[non-text result]"
+    assert answer_of(shot)[0] == "[non-text result]"
 
 
-def test_result_text_reads_only_the_first_content_block():
+def test_answer_of_reads_only_the_first_content_block():
     """Pins measured behaviour that is also a defect: a multi-block result loses
     everything after the first block, silently.
 
@@ -421,8 +421,8 @@ def test_result_text_reads_only_the_first_content_block():
             mt.TextContent(type="text", text="SECOND"),
         ]
     )
-    assert _result_text(multi)[0] == "FIRST"
-    assert "SECOND" not in _result_text(multi)[0]
+    assert answer_of(multi)[0] == "FIRST"
+    assert "SECOND" not in answer_of(multi)[0]
 
 
 def test_an_empty_text_block_is_reported_as_a_non_text_result():
@@ -430,7 +430,7 @@ def test_an_empty_text_block_is_reported_as_a_non_text_result():
     tool that correctly found nothing (an empty element read by
     browser_read_text) is described to the model as a non-text result, which is
     a different fact."""
-    assert _result_text(text_result(""))[0] == "[non-text result]"
+    assert answer_of(text_result(""))[0] == "[non-text result]"
 
 
 # --------------------------------------------------------------------------
@@ -932,7 +932,7 @@ async def test_a_tool_that_answers_with_an_error_is_narrated_as_an_error():
 
 
 async def test_a_screenshot_reaches_the_model_as_a_placeholder_only():
-    """End to end through the loop, not just through _result_text: the model asks
+    """End to end through the loop, not just through said: the model asks
     for browser_take_screenshot, which is one of the advertised tools, and the
     only thing that comes back is "[non-text result]". The image is dropped."""
     shot = mt.CallToolResult(
@@ -1245,6 +1245,38 @@ async def test_a_tool_the_model_remembers_and_this_server_lacks_gets_a_map():
         "started: %r" % told)
     assert ("err", told) in seen, (
         "the person watching does not see the step fail with the sentence: %r" % (seen,))
+
+
+def test_the_known_names_are_read_off_the_definitions_not_stored_beside_them():
+    """⛔ IT WAS THE ONLY ATTRIBUTE OF THIS CLASS NOT DECLARED IN `__init__`,
+    and it was assigned inside `if self.tool_defs is None` - the one branch
+    that BUILDS the definitions. So a conversation whose definitions arrived
+    any other way had no `known` at all, and the miss landed on the line that
+    tells a model it asked for a tool nobody has: an AttributeError raised
+    inside the handler for somebody else's mistake.
+
+    Declaring it as an empty list in `__init__` would have been worse than the
+    crash, because an empty list is a legal answer: every tool would be refused
+    as unknown, quietly. It is derived from `tool_defs` instead, so the two
+    cannot disagree and neither can be missing.
+
+    Known-bad, two: store it beside `tool_defs` again (the first assertion goes
+    back to AttributeError), or seed it with a list of its own that `tool_defs`
+    does not produce (the third stops agreeing).
+    """
+    convo = Conversation(ScriptedModel([]), "m")
+    assert convo.known == [], (
+        "a fresh conversation cannot say which tools it knows without raising")
+
+    convo.tool_defs = mcp_tools_to_openai(
+        [tool("browser_navigate"), tool("browser_open")])
+    assert convo.known == ["browser_navigate", "browser_open"], (
+        "the names were not read off the definitions: %r" % (convo.known,))
+
+    convo.tool_defs = mcp_tools_to_openai([tool("browser_click")])
+    assert convo.known == ["browser_click"], (
+        "the names did not follow the definitions changing, so they are a "
+        "second copy: %r" % (convo.known,))
 
 
 def test_the_instructions_open_by_saying_to_open_the_browser_first():

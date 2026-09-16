@@ -20,6 +20,7 @@ import json
 from typing import Awaitable, Callable, List, Optional
 
 from . import actions_help
+from .link import answer_of
 
 SYSTEM_PROMPT = (
     "You are a browser automation agent. You control a real, stealth Firefox "
@@ -147,28 +148,18 @@ def mcp_tools_to_openai(tools) -> List[dict]:
     return out
 
 
-def _result_text(result) -> tuple[str, bool]:
-    """What the tool said, and whether it was a failure.
-
-    ⛔ MCP REPORTS A FAILED TOOL AS A RESULT, NOT AS AN EXCEPTION. A tool
-    that cannot do the thing answers with `isError` set and the reason in its
-    text; only a broken transport raises. Reading the text and ignoring the
-    flag made every failure arrive at the page as a success: the step row
-    kept the past tense that asserts the thing happened - `Navigated
-    https://...` - with the error printed after it in the colour of an
-    ordinary result. Measured on a live transcript: a `NS_ERROR_UNKNOWN_HOST`
-    drawn at `data-state="ok"`, and zero rows in the whole session had ever
-    reached the error state the page has always known how to draw.
-
-    For an agent that acts on real websites this is the worst kind of defect
-    in a log: not a gap, a lie, and it costs the reader the ability to trust
-    any other row.
-    """
-    failed = bool(getattr(result, "isError", False))
-    if not getattr(result, "content", None):
-        return "", failed
-    first = result.content[0]
-    return (getattr(first, "text", None) or "[non-text result]"), failed
+# ⛔ `_result_text` STOOD HERE AND IT WAS `link.answer_of` WRITTEN OUT AGAIN. Five
+# lines, the `[non-text result]` literal included, reading the same wire format
+# from the same objects - while `text_of` in that module carried a docstring
+# saying it was shared with this loop precisely so the two could not drift. It
+# was not shared; it was copied. Both copies had tests, so either could have
+# moved alone and stayed green.
+#
+# The loop reads `link.answer_of` now, and the measured account of why the flag is
+# read at all travels with it. What is NOT here is an alias keeping the old
+# name alive: the tests that held this function moved to the function, the way
+# `run_task` and `Sessions.around` moved to the suite that was their only
+# caller.
 
 
 #: How much of a tool result the WATCHER is shown, and how much the MODEL is
@@ -243,6 +234,26 @@ class Conversation:
         self.tool_defs: Optional[List[dict]] = None
         self.usage = {"prompt": 0, "completion": 0, "calls": 0, "last_prompt": 0}
 
+    @property
+    def known(self) -> List[str]:
+        """The tool names this server has, read off the definitions.
+
+        ⛔ DERIVED, WHERE IT WAS A SECOND COPY ASSIGNED INSIDE A BRANCH. It was
+        written in `run`, under `if self.tool_defs is None`, which is the one
+        line that builds the definitions - so the list existed only when that
+        branch had run, and it was the only attribute of this class not
+        declared in `__init__`. A conversation whose definitions arrived any
+        other way had no `known` at all, and the failure landed on the line
+        below that tells a model it asked for a tool nobody has: an
+        `AttributeError` in the handler for somebody else's mistake.
+
+        Initialising it to an empty list in `__init__` would have been worse
+        than the crash, because an empty list is a legal answer: every tool the
+        model asked for would be refused as unknown, quietly and wrongly. The
+        fact is a property of `tool_defs`, so it is read from `tool_defs`.
+        """
+        return [d["function"]["name"] for d in self.tool_defs or []]
+
     def _note_usage(self, resp) -> None:
         u = getattr(resp, "usage", None)
         if u is None:
@@ -269,7 +280,6 @@ class Conversation:
         """
         if self.tool_defs is None:
             self.tool_defs = mcp_tools_to_openai(tools)
-            self.known = [d["function"]["name"] for d in self.tool_defs]
         # Refreshed every run rather than set once: the instructions belong to
         # the server the link is talking to now, and a transcript restored from
         # disk arrived with a system message this process did not write.
@@ -356,7 +366,7 @@ class Conversation:
                                           "content": text})
                     continue
                 try:
-                    text, failed = _result_text(await call_tool(name, args))
+                    text, failed = answer_of(await call_tool(name, args))
                 except Exception as exc:
                     text = f"{type(exc).__name__}: {exc}"
                     await say("err", text)
