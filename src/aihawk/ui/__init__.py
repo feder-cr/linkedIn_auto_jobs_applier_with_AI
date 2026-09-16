@@ -41,7 +41,7 @@ CSS_FILES = (
     "04-transcript.css",   # turns, steps, answers, rendered markdown
     "05-composer.css",     # the box you type in
     "06-browser.css",      # the browser bar and the live picture
-    "08-stage.css",        # one screen, or two, or four
+    "07-stage.css",        # one screen, or two, or four
 )
 
 #: The script, in execution order.
